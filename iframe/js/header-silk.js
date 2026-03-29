@@ -878,9 +878,9 @@
 		};
 	}
 
-	async function renderTextToBlob(text, settings) {
-		const plan = getTextRenderPlan(text, settings);
-		const strokeWidthPx = plan.strokeWidthPx;
+	async function renderTextToBlob(text, settings, plan) {
+		const renderPlan = plan || getTextRenderPlan(text, settings);
+		const strokeWidthPx = renderPlan.strokeWidthPx;
 
 		const canvas = document.createElement('canvas');
 		const context = canvas.getContext('2d');
@@ -888,8 +888,8 @@
 			throw new Error('生成失败，请重试。');
 		}
 
-		canvas.width = plan.canvasWidthPx;
-		canvas.height = plan.canvasHeightPx;
+		canvas.width = renderPlan.canvasWidthPx;
+		canvas.height = renderPlan.canvasHeightPx;
 
 		const drawContext = canvas.getContext('2d');
 		if (!drawContext) {
@@ -901,7 +901,7 @@
 		drawContext.lineCap = 'round';
 		drawContext.lineWidth = strokeWidthPx;
 		drawContext.textBaseline = 'alphabetic';
-		drawContext.font = plan.fontDeclaration;
+		drawContext.font = renderPlan.fontDeclaration;
 
 		if (settings.invert) {
 			drawContext.fillStyle = '#000000';
@@ -915,8 +915,8 @@
 			drawContext.strokeStyle = '#000000';
 		}
 
-		const textX = plan.paddingXPx + plan.leftPx;
-		const textY = plan.paddingYPx + plan.ascentPx;
+		const textX = renderPlan.paddingXPx + renderPlan.leftPx;
+		const textY = renderPlan.paddingYPx + renderPlan.ascentPx;
 		if (strokeWidthPx > 0) {
 			drawContext.strokeText(text, textX, textY);
 		}
@@ -926,8 +926,8 @@
 			blob: dataUrlToBlob(canvas.toDataURL('image/png')),
 			widthPx: canvas.width,
 			heightPx: canvas.height,
-			imageWidthMil: plan.imageWidthMil,
-			imageHeightMil: plan.imageHeightMil,
+			imageWidthMil: renderPlan.imageWidthMil,
+			imageHeightMil: renderPlan.imageHeightMil,
 		};
 	}
 
@@ -1490,7 +1490,7 @@
 	async function buildHeaderArtifacts(header, settings) {
 		const targetLayer = getTargetSilkLayer(header, settings);
 		const artifacts = [];
-		const assetCache = new Map();
+		const textPlanCache = new Map();
 		const offsetMil = clamp(Number(settings.offsetMil) || 18, 1, 300);
 		const rotation = getPlacementRotation(header, settings);
 		for (const row of header.rows) {
@@ -1508,39 +1508,16 @@
 					rotation,
 				};
 
-				if (!assetCache.has(placement.text)) {
-					assetCache.set(placement.text, (async () => {
-						const rendered = await renderTextToBlob(placement.text, settings);
-						const complexPolygon = await eda.pcb_MathPolygon.convertImageToComplexPolygon(
-							rendered.blob,
-							rendered.widthPx,
-							rendered.heightPx,
-							0.3,
-							0.9,
-							1,
-							2,
-							false,
-							false,
-						);
-
-						if (!complexPolygon) {
-							throw new Error('生成失败，请调整参数后重试。');
-						}
-
-						return {
-							complexPolygon,
-							imageWidth: rendered.imageWidthMil,
-							imageHeight: rendered.imageHeightMil,
-						};
-					})());
+				if (!textPlanCache.has(placement.text)) {
+					textPlanCache.set(placement.text, getTextRenderPlan(placement.text, settings));
 				}
 
-				const asset = await assetCache.get(placement.text);
+				const textPlan = textPlanCache.get(placement.text);
 				const topLeft = getImageTopLeftFromCenter(
 					placement.x,
 					placement.y,
-					asset.imageWidth,
-					asset.imageHeight,
+					textPlan.imageWidthMil,
+					textPlan.imageHeightMil,
 					placement.rotation,
 				);
 
@@ -1554,11 +1531,10 @@
 					centerY: placement.y,
 					topLeftX: topLeft.x,
 					topLeftY: topLeft.y,
-					imageWidth: asset.imageWidth,
-					imageHeight: asset.imageHeight,
+					imageWidth: textPlan.imageWidthMil,
+					imageHeight: textPlan.imageHeightMil,
 					horizonMirror: false,
 					rotation: placement.rotation,
-					complexPolygon: asset.complexPolygon,
 				});
 			}
 		}
@@ -1568,6 +1544,53 @@
 			header,
 			items: artifacts.concat(getHeaderShellItems(header, settings)),
 		};
+	}
+
+	async function prepareTextComplexPolygon(text, settings) {
+		const plan = getTextRenderPlan(text, settings);
+		const rendered = await renderTextToBlob(text, settings, plan);
+		const complexPolygon = await eda.pcb_MathPolygon.convertImageToComplexPolygon(
+			rendered.blob,
+			rendered.widthPx,
+			rendered.heightPx,
+			0.3,
+			0.9,
+			1,
+			2,
+			false,
+			false,
+		);
+
+		if (!complexPolygon) {
+			throw new Error('生成失败，请调整参数后重试。');
+		}
+
+		return complexPolygon;
+	}
+
+	async function hydratePlacedItemsWithAssets(items, settings) {
+		const imageItems = items.filter(item => item.type === 'image');
+		if (!imageItems.length) {
+			return items;
+		}
+
+		const uniqueTexts = [...new Set(imageItems.map(item => item.text).filter(Boolean))];
+		const assetEntries = await Promise.all(uniqueTexts.map(async (text) => {
+			const complexPolygon = await prepareTextComplexPolygon(text, settings);
+			return [text, complexPolygon];
+		}));
+		const assetMap = new Map(assetEntries);
+
+		return items.map((item) => {
+			if (item.type !== 'image') {
+				return item;
+			}
+
+			return {
+				...item,
+				complexPolygon: assetMap.get(item.text),
+			};
+		});
 	}
 
 	function waitForRangeSelection(options) {
@@ -1646,14 +1669,15 @@
 			tooSmallMessage: '请拖动框选一个范围，不要单击。',
 		});
 		const translatedItems = layoutArtifactsFromRange(artifacts, selection.startPoint, selection.endPoint, settings);
-		const autoAdjustedCount = translatedItems.filter(item => item.type === 'image' && Number(item.autoScale) < 0.999).length;
-		const finalHandles = await createFinalGroup(artifacts.layer, translatedItems, false);
+		const finalItems = await hydratePlacedItemsWithAssets(translatedItems, settings);
+		const autoAdjustedCount = finalItems.filter(item => item.type === 'image' && Number(item.autoScale) < 0.999).length;
+		const finalHandles = await createFinalGroup(artifacts.layer, finalItems, false);
 		if (!finalHandles.length) {
 			throw new Error('生成失败，请重试。');
 		}
 
 		try {
-			const totalCreated = await finalizePlacedGroup(artifacts.layer, translatedItems, finalHandles);
+			const totalCreated = await finalizePlacedGroup(artifacts.layer, finalItems, finalHandles);
 			return {
 				totalCreated,
 				handles: finalHandles,
