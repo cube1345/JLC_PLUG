@@ -13,6 +13,9 @@
 	const TEXT_RENDER_MARGIN_Y_MIL = 8;
 	const RANGE_SELECTION_EVENT_ID = 'header-silk-range-select';
 	const MIN_RANGE_SELECTION_DISTANCE = 5;
+	const AUTO_SHRINK_GAP_RATIO_MAJOR = 0.88;
+	const AUTO_SHRINK_GAP_RATIO_MINOR = 0.82;
+	const MIN_AUTO_SHRINK_SCALE = 0.68;
 	const MAX_STORED_ARTIFACT_GROUPS = 80;
 
 	const DEFAULT_SETTINGS = {
@@ -725,7 +728,7 @@
 			: currentSettings.layerMode === 'bottom'
 				? '底层'
 				: '自动';
-		summary.textContent = `字号 ${fontSizeDisplay} ${currentSettings.unitMode}，粗细 ${strokeDisplay} ${currentSettings.unitMode}，偏移 ${offsetDisplay} ${currentSettings.unitMode}，${layerText}${shellText}。`;
+		summary.textContent = `字号 ${fontSizeDisplay} ${currentSettings.unitMode}，粗细 ${strokeDisplay} ${currentSettings.unitMode}，偏移 ${offsetDisplay} ${currentSettings.unitMode}，${layerText}${shellText}，密集区域自动微缩。`;
 	}
 
 	async function populateFontOptions(settings) {
@@ -1273,6 +1276,50 @@
 		});
 	}
 
+	function getOrientedImageSize(imageWidth, imageHeight, rotation) {
+		const normalizedRotation = ((Math.round(rotation) % 360) + 360) % 360;
+		if (normalizedRotation === 90 || normalizedRotation === 270) {
+			return {
+				width: imageHeight,
+				height: imageWidth,
+			};
+		}
+
+		return {
+			width: imageWidth,
+			height: imageHeight,
+		};
+	}
+
+	function getItemAxisFootprint(item, orientation, rotation) {
+		const orientedSize = getOrientedImageSize(item.imageWidth, item.imageHeight, rotation);
+		return orientation === 'horizontal'
+			? {
+				major: orientedSize.width,
+				minor: orientedSize.height,
+			}
+			: {
+				major: orientedSize.height,
+				minor: orientedSize.width,
+			};
+	}
+
+	function getAutoShrinkScaleForItem(item, placementContext) {
+		if (!placementContext || !Number.isFinite(placementContext.majorStep) || placementContext.majorStep <= 0) {
+			return 1;
+		}
+
+		const footprint = getItemAxisFootprint(item, placementContext.orientation, placementContext.rotation);
+		const availableMajor = placementContext.majorStep * AUTO_SHRINK_GAP_RATIO_MAJOR;
+		const availableMinor = placementContext.rowCount > 1
+			? placementContext.minorStep * AUTO_SHRINK_GAP_RATIO_MINOR
+			: Number.POSITIVE_INFINITY;
+		const scaleByMajor = footprint.major > 0 ? availableMajor / footprint.major : 1;
+		const scaleByMinor = footprint.minor > 0 ? availableMinor / footprint.minor : 1;
+		const autoScale = Math.min(scaleByMajor, scaleByMinor, 1);
+		return clamp(autoScale, MIN_AUTO_SHRINK_SCALE, 1);
+	}
+
 	function layoutArtifactsFromRange(artifacts, startPoint, endPoint, settings) {
 		const orientation = getRangeOrientation(startPoint, endPoint);
 		const rotation = getRangePlacementRotation(startPoint, endPoint, settings);
@@ -1280,6 +1327,21 @@
 		const rowIndexes = [...new Set(imageItems.map(item => item.rowIndex))].sort((a, b) => a - b);
 		const minorCenters = getRangeMinorCenters(startPoint, endPoint, rowIndexes.length);
 		const rowCenterByIndex = new Map(rowIndexes.map((rowIndex, index) => [rowIndex, minorCenters[index]]));
+		const bounds = getRangeBounds(startPoint, endPoint);
+		const majorSpan = orientation === 'horizontal'
+			? Math.max(bounds.maxX - bounds.minX, 0)
+			: Math.max(bounds.maxY - bounds.minY, 0);
+		const minorSpan = orientation === 'horizontal'
+			? Math.max(bounds.maxY - bounds.minY, 0)
+			: Math.max(bounds.maxX - bounds.minX, 0);
+		const maxItemsPerRow = Math.max(...rowIndexes.map((rowIndex) => imageItems.filter(item => item.rowIndex === rowIndex).length), 1);
+		const placementContext = {
+			orientation,
+			rotation,
+			rowCount: Math.max(rowIndexes.length, 1),
+			majorStep: maxItemsPerRow > 0 ? majorSpan / maxItemsPerRow : majorSpan,
+			minorStep: rowIndexes.length > 0 ? minorSpan / rowIndexes.length : minorSpan,
+		};
 		const placedItems = [];
 
 		for (const rowIndex of rowIndexes) {
@@ -1300,11 +1362,14 @@
 				const distributedCenter = distributedCenters[index];
 				const centerX = orientation === 'horizontal' ? distributedCenter.x : rowMinorCenter;
 				const centerY = orientation === 'horizontal' ? rowMinorCenter : distributedCenter.y;
+				const autoScale = getAutoShrinkScaleForItem(item, placementContext);
+				const scaledImageWidth = item.imageWidth * autoScale;
+				const scaledImageHeight = item.imageHeight * autoScale;
 				const topLeft = getImageTopLeftFromCenter(
 					centerX,
 					centerY,
-					item.imageWidth,
-					item.imageHeight,
+					scaledImageWidth,
+					scaledImageHeight,
 					rotation,
 				);
 
@@ -1314,7 +1379,10 @@
 					centerY,
 					topLeftX: topLeft.x,
 					topLeftY: topLeft.y,
+					imageWidth: scaledImageWidth,
+					imageHeight: scaledImageHeight,
 					rotation,
+					autoScale,
 				});
 			}
 		}
@@ -1578,6 +1646,7 @@
 			tooSmallMessage: '请拖动框选一个范围，不要单击。',
 		});
 		const translatedItems = layoutArtifactsFromRange(artifacts, selection.startPoint, selection.endPoint, settings);
+		const autoAdjustedCount = translatedItems.filter(item => item.type === 'image' && Number(item.autoScale) < 0.999).length;
 		const finalHandles = await createFinalGroup(artifacts.layer, translatedItems, false);
 		if (!finalHandles.length) {
 			throw new Error('生成失败，请重试。');
@@ -1588,6 +1657,7 @@
 			return {
 				totalCreated,
 				handles: finalHandles,
+				autoAdjustedCount,
 			};
 		}
 		catch (error) {
@@ -1884,7 +1954,10 @@
 
 			const result = await createCombinedSilkAtMouse(artifacts, placementSettings);
 			await rememberGeneratedArtifacts(header, artifacts.layer, result.handles).catch(() => {});
-			eda.sys_Message.showToastMessage(`已按框选范围生成，共 ${result.totalCreated} 个图元。`, ESYS_ToastMessageType.SUCCESS, 2);
+			const autoShrinkText = result.autoAdjustedCount > 0
+				? `，其中 ${result.autoAdjustedCount} 个丝印按密度自动缩小`
+				: '';
+			eda.sys_Message.showToastMessage(`已按框选范围生成，共 ${result.totalCreated} 个图元${autoShrinkText}。`, ESYS_ToastMessageType.SUCCESS, 2);
 			void eda.pcb_SelectControl.clearSelected().catch(() => {});
 		}
 		catch (error) {
