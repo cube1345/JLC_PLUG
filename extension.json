@@ -3,7 +3,7 @@
 	"uuid": "2eec78240b2449dd93414d08dbb3fa4e",
 	"displayName": "丝印一键生成",
 	"description": "根据排针排母网络一键生成/管理丝印",
-	"version": "2.0.1",
+	"version": "2.0.2",
 	"publisher": "marcus",
 	"engines": {
 		"eda": "^3.0.0"
@@ -29,11 +29,11 @@
 		"pcb": [
 			{
 				"id": "Header Net Silk",
-				"title": "排针丝印",
+				"title": "丝印一键生成",
 				"menuItems": [
 					{
 						"id": "generate_selected_header_silk_pcb",
-						"title": "生成排针丝印...",
+						"title": "生成丝印...",
 						"registerFn": "generateSelectedHeaderSilk"
 					},
 					{

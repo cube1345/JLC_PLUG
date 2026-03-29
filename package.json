@@ -1,7 +1,7 @@
 {
 	"name": "silkprint",
-	"version": "2.0.1",
-	"description": "嘉立创 EDA 排针网络导出与丝印生成工具",
+	"version": "2.0.2",
+	"description": "根据排针排母网络一键生成/管理丝印",
 	"author": "marcus",
 	"license": "Apache-2.0",
 	"homepage": "https://pro.lceda.cn/",
