@@ -1034,6 +1034,13 @@
 			: 'vertical';
 	}
 
+	function comparePadNumbers(leftPadNumber, rightPadNumber) {
+		return String(leftPadNumber || '').localeCompare(String(rightPadNumber || ''), 'en', {
+			numeric: true,
+			sensitivity: 'base',
+		});
+	}
+
 	function getRangeBounds(startPoint, endPoint) {
 		return {
 			minX: Math.min(startPoint.x, endPoint.x),
@@ -1120,7 +1127,13 @@
 		for (const rowIndex of rowIndexes) {
 			const rowItems = imageItems
 				.filter(item => item.rowIndex === rowIndex)
-				.sort((a, b) => a.padIndex - b.padIndex);
+				.sort((a, b) => {
+					const padNumberOrder = comparePadNumbers(a.padNumber, b.padNumber);
+					if (padNumberOrder !== 0) {
+						return padNumberOrder;
+					}
+					return a.padIndex - b.padIndex;
+				});
 			const distributedCenters = getRangeDistributedCenters(startPoint, endPoint, rowItems.length);
 			const rowMinorCenter = rowCenterByIndex.get(rowIndex);
 
@@ -1238,6 +1251,7 @@
 				artifacts.push({
 					type: 'image',
 					text: placement.text,
+					padNumber: pad.padNumber,
 					rowIndex: row.index,
 					padIndex,
 					centerX: placement.x,

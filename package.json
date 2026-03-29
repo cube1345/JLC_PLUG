@@ -1,6 +1,6 @@
 {
 	"name": "silkprint",
-	"version": "1.3.0",
+	"version": "1.3.1",
 	"description": "嘉立创 EDA 排针网络导出与丝印生成工具",
 	"author": "marcus",
 	"license": "Apache-2.0",
