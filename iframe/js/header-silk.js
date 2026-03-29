@@ -10,12 +10,8 @@
 	const TEXT_RENDER_PADDING_Y_PX = 10;
 	const TEXT_RENDER_MARGIN_X_MIL = 6;
 	const TEXT_RENDER_MARGIN_Y_MIL = 8;
-	const COMBINED_RENDER_TARGET_PX = 1400;
-	const COMBINED_RENDER_MIN_SCALE = 1.2;
-	const COMBINED_RENDER_MAX_SCALE = 4;
-	const PLACEMENT_EVENT_ID = 'header-silk-place-once';
-	const CONFIRM_SHORTCUT = ['ENTER'];
-	const CANCEL_SHORTCUT = ['ESC'];
+	const RANGE_SELECTION_EVENT_ID = 'header-silk-range-select';
+	const MIN_RANGE_SELECTION_DISTANCE = 5;
 
 	const DEFAULT_SETTINGS = {
 		fontFamily: '黑体',
@@ -327,81 +323,6 @@
 
 	function saveSettings(settings) {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-	}
-
-	function setPlacementStatus(statusText, metaText) {
-		if (elements.placementStatus && typeof statusText === 'string') {
-			elements.placementStatus.textContent = statusText;
-		}
-		if (elements.placementMeta && typeof metaText === 'string') {
-			elements.placementMeta.textContent = metaText;
-		}
-	}
-
-	function setPlacementMode(active, metaText) {
-		document.body.classList.toggle('placement-active', active);
-		if (elements.placementStage) {
-			elements.placementStage.hidden = !active;
-		}
-		if (elements.panelSubtitle) {
-			elements.panelSubtitle.textContent = active
-				? '移动鼠标预览位置，按 Enter 确认，按 Esc 取消。'
-				: '先选中排针，再设置参数并预览位置。';
-		}
-		if (active) {
-			setPlacementStatus(
-				'移动鼠标预览位置，按 Enter 确认，按 Esc 取消。',
-				metaText || '准备中...',
-			);
-		}
-	}
-
-	async function registerPlacementShortcuts(onConfirm, onCancel) {
-		if (
-			!eda.sys_ShortcutKey
-			|| typeof ESYS_ShortcutKeyEffectiveEditorDocumentType === 'undefined'
-			|| typeof ESYS_ShortcutKeyEffectiveEditorScene === 'undefined'
-		) {
-			return;
-		}
-
-		const documentType = [ESYS_ShortcutKeyEffectiveEditorDocumentType.PCB];
-		const scenes = [
-			ESYS_ShortcutKeyEffectiveEditorScene.EDITOR,
-			ESYS_ShortcutKeyEffectiveEditorScene.SELECT_CANVAS,
-			ESYS_ShortcutKeyEffectiveEditorScene.NOT_SELECT_CANVAS,
-			ESYS_ShortcutKeyEffectiveEditorScene.PLACE,
-		];
-
-		try {
-			await eda.sys_ShortcutKey.registerShortcutKey(CONFIRM_SHORTCUT, '确认放置', () => {
-				void onConfirm();
-			}, documentType, scenes);
-		}
-		catch {}
-
-		try {
-			await eda.sys_ShortcutKey.registerShortcutKey(CANCEL_SHORTCUT, '取消放置', () => {
-				void onCancel();
-			}, documentType, scenes);
-		}
-		catch {}
-	}
-
-	async function unregisterPlacementShortcuts() {
-		if (!eda.sys_ShortcutKey) {
-			return;
-		}
-
-		try {
-			await eda.sys_ShortcutKey.unregisterShortcutKey(CONFIRM_SHORTCUT);
-		}
-		catch {}
-
-		try {
-			await eda.sys_ShortcutKey.unregisterShortcutKey(CANCEL_SHORTCUT);
-		}
-		catch {}
 	}
 
 	function refreshUnitBadges(unitMode) {
@@ -796,29 +717,6 @@
 		};
 	}
 
-	async function createPreviewSourceFromBlob(blob) {
-		if (typeof createImageBitmap === 'function') {
-			try {
-				return await createImageBitmap(blob);
-			}
-			catch {}
-		}
-
-		return new Promise((resolve, reject) => {
-			const objectUrl = URL.createObjectURL(blob);
-			const image = new Image();
-			image.onload = () => {
-				URL.revokeObjectURL(objectUrl);
-				resolve(image);
-			};
-			image.onerror = () => {
-				URL.revokeObjectURL(objectUrl);
-				reject(new Error('生成失败，请重试。'));
-			};
-			image.src = objectUrl;
-		});
-	}
-
 	async function renderTextToBlob(text, settings) {
 		const plan = getTextRenderPlan(text, settings);
 		const strokeWidthPx = plan.strokeWidthPx;
@@ -1101,58 +999,156 @@
 		return false;
 	}
 
-	function getItemsBounds(items) {
-		if (!items.length) {
-			return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+	function getRangeDistributedCenters(startPoint, endPoint, length) {
+		const centers = [];
+		if (length <= 0) {
+			return centers;
 		}
 
-		let minX = Number.POSITIVE_INFINITY;
-		let maxX = Number.NEGATIVE_INFINITY;
-		let minY = Number.POSITIVE_INFINITY;
-		let maxY = Number.NEGATIVE_INFINITY;
-
-		for (const item of items) {
-			if (item.type === 'image') {
-				minX = Math.min(minX, item.topLeftX);
-				maxX = Math.max(maxX, item.topLeftX + item.imageWidth);
-				maxY = Math.max(maxY, item.topLeftY);
-				minY = Math.min(minY, item.topLeftY - item.imageHeight);
-				continue;
+		const xDifferenceAbsolute = Math.abs(startPoint.x - endPoint.x);
+		const yDifferenceAbsolute = Math.abs(startPoint.y - endPoint.y);
+		if (xDifferenceAbsolute >= yDifferenceAbsolute) {
+			const difference = (startPoint.x - endPoint.x) / length;
+			for (let index = 0; index < length; index += 1) {
+				centers[index] = {
+					x: (startPoint.x - difference * index + (startPoint.x - difference * (index + 1))) / 2,
+					y: (startPoint.y + endPoint.y) / 2,
+				};
 			}
-
-			for (const point of item.points) {
-				minX = Math.min(minX, point.x);
-				maxX = Math.max(maxX, point.x);
-				minY = Math.min(minY, point.y);
-				maxY = Math.max(maxY, point.y);
-			}
+			return centers;
 		}
 
-		return { minX, maxX, minY, maxY };
+		const difference = (startPoint.y - endPoint.y) / length;
+		for (let index = 0; index < length; index += 1) {
+			centers[index] = {
+				x: (startPoint.x + endPoint.x) / 2,
+				y: (startPoint.y - difference * index + (startPoint.y - difference * (index + 1))) / 2,
+			};
+		}
+		return centers;
 	}
 
-	function getHeaderLabelPlacements(header, settings) {
-		const placements = [];
-		const offsetMil = clamp(Number(settings.offsetMil) || 18, 1, 300);
-		const rotation = getPlacementRotation(header, settings);
+	function getRangeOrientation(startPoint, endPoint) {
+		return Math.abs(startPoint.x - endPoint.x) >= Math.abs(startPoint.y - endPoint.y)
+			? 'horizontal'
+			: 'vertical';
+	}
 
-		for (const row of header.rows) {
-			const direction = getPlacementDirection(header, row, settings);
-			for (const pad of row.pads) {
-				if (!pad.silkLabel) {
-					continue;
-				}
+	function getRangeBounds(startPoint, endPoint) {
+		return {
+			minX: Math.min(startPoint.x, endPoint.x),
+			maxX: Math.max(startPoint.x, endPoint.x),
+			minY: Math.min(startPoint.y, endPoint.y),
+			maxY: Math.max(startPoint.y, endPoint.y),
+		};
+	}
 
-				placements.push({
-					text: pad.silkLabel,
-					x: pad.x + direction.x * offsetMil,
-					y: pad.y + direction.y * offsetMil,
+	function getRangeMinorCenters(startPoint, endPoint, count) {
+		if (count <= 0) {
+			return [];
+		}
+
+		const orientation = getRangeOrientation(startPoint, endPoint);
+		if (count === 1) {
+			return [orientation === 'horizontal'
+				? (startPoint.y + endPoint.y) / 2
+				: (startPoint.x + endPoint.x) / 2];
+		}
+
+		const bounds = getRangeBounds(startPoint, endPoint);
+		const centers = [];
+		if (orientation === 'horizontal') {
+			const step = (bounds.maxY - bounds.minY) / count;
+			for (let index = 0; index < count; index += 1) {
+				centers.push(bounds.maxY - step * (index + 0.5));
+			}
+			return centers;
+		}
+
+		const step = (bounds.maxX - bounds.minX) / count;
+		for (let index = 0; index < count; index += 1) {
+			centers.push(bounds.minX + step * (index + 0.5));
+		}
+		return centers;
+	}
+
+	function getRangePlacementRotation(startPoint, endPoint, settings) {
+		if (settings.rotationMode !== 'auto') {
+			return Number(settings.rotationMode) || 0;
+		}
+
+		return getRangeOrientation(startPoint, endPoint) === 'horizontal' ? 0 : 90;
+	}
+
+	function getShellItemsFromRange(startPoint, endPoint, settings) {
+		if (!settings.includeShell) {
+			return [];
+		}
+
+		const bounds = getRangeBounds(startPoint, endPoint);
+		const lineWidth = clamp(Math.max(Number(settings.strokeWidthMil) || 0, 4), 4, 40);
+		const corners = [
+			{ x: bounds.minX, y: bounds.minY },
+			{ x: bounds.maxX, y: bounds.minY },
+			{ x: bounds.maxX, y: bounds.maxY },
+			{ x: bounds.minX, y: bounds.maxY },
+		];
+
+		return corners.map((startCorner, index) => {
+			const endCorner = corners[(index + 1) % corners.length];
+			return {
+				type: 'line',
+				startX: startCorner.x,
+				startY: startCorner.y,
+				endX: endCorner.x,
+				endY: endCorner.y,
+				points: [startCorner, endCorner],
+				lineWidth,
+			};
+		});
+	}
+
+	function layoutArtifactsFromRange(artifacts, startPoint, endPoint, settings) {
+		const orientation = getRangeOrientation(startPoint, endPoint);
+		const rotation = getRangePlacementRotation(startPoint, endPoint, settings);
+		const imageItems = artifacts.items.filter(item => item.type === 'image');
+		const rowIndexes = [...new Set(imageItems.map(item => item.rowIndex))].sort((a, b) => a - b);
+		const minorCenters = getRangeMinorCenters(startPoint, endPoint, rowIndexes.length);
+		const rowCenterByIndex = new Map(rowIndexes.map((rowIndex, index) => [rowIndex, minorCenters[index]]));
+		const placedItems = [];
+
+		for (const rowIndex of rowIndexes) {
+			const rowItems = imageItems
+				.filter(item => item.rowIndex === rowIndex)
+				.sort((a, b) => a.padIndex - b.padIndex);
+			const distributedCenters = getRangeDistributedCenters(startPoint, endPoint, rowItems.length);
+			const rowMinorCenter = rowCenterByIndex.get(rowIndex);
+
+			for (let index = 0; index < rowItems.length; index += 1) {
+				const item = rowItems[index];
+				const distributedCenter = distributedCenters[index];
+				const centerX = orientation === 'horizontal' ? distributedCenter.x : rowMinorCenter;
+				const centerY = orientation === 'horizontal' ? rowMinorCenter : distributedCenter.y;
+				const topLeft = getImageTopLeftFromCenter(
+					centerX,
+					centerY,
+					item.imageWidth,
+					item.imageHeight,
+					rotation,
+				);
+
+				placedItems.push({
+					...item,
+					centerX,
+					centerY,
+					topLeftX: topLeft.x,
+					topLeftY: topLeft.y,
 					rotation,
 				});
 			}
 		}
 
-		return placements;
+		return placedItems.concat(getShellItemsFromRange(startPoint, endPoint, settings));
 	}
 
 	function getHeaderShellItems(header, settings) {
@@ -1186,239 +1182,169 @@
 		const targetLayer = getTargetSilkLayer(header, settings);
 		const artifacts = [];
 		const assetCache = new Map();
-		const labelPlacements = getHeaderLabelPlacements(header, settings);
-		for (const placement of labelPlacements) {
-			if (!assetCache.has(placement.text)) {
-				assetCache.set(placement.text, (async () => {
-					const rendered = await renderTextToBlob(placement.text, settings);
-					const complexPolygon = await eda.pcb_MathPolygon.convertImageToComplexPolygon(
-						rendered.blob,
-						rendered.widthPx,
-						rendered.heightPx,
-						0.3,
-						0.9,
-						1,
-						2,
-						false,
-						false,
-					);
+		const offsetMil = clamp(Number(settings.offsetMil) || 18, 1, 300);
+		const rotation = getPlacementRotation(header, settings);
+		for (const row of header.rows) {
+			const direction = getPlacementDirection(header, row, settings);
+			for (let padIndex = 0; padIndex < row.pads.length; padIndex += 1) {
+				const pad = row.pads[padIndex];
+				if (!pad.silkLabel) {
+					continue;
+				}
 
-					if (!complexPolygon) {
-						throw new Error('生成失败，请调整参数后重试。');
-					}
+				const placement = {
+					text: pad.silkLabel,
+					x: pad.x + direction.x * offsetMil,
+					y: pad.y + direction.y * offsetMil,
+					rotation,
+				};
 
-					const previewSource = await createPreviewSourceFromBlob(rendered.blob);
+				if (!assetCache.has(placement.text)) {
+					assetCache.set(placement.text, (async () => {
+						const rendered = await renderTextToBlob(placement.text, settings);
+						const complexPolygon = await eda.pcb_MathPolygon.convertImageToComplexPolygon(
+							rendered.blob,
+							rendered.widthPx,
+							rendered.heightPx,
+							0.3,
+							0.9,
+							1,
+							2,
+							false,
+							false,
+						);
 
-					return {
-						complexPolygon,
-						imageWidth: rendered.imageWidthMil,
-						imageHeight: rendered.imageHeightMil,
-						previewSource,
-					};
-				})());
+						if (!complexPolygon) {
+							throw new Error('生成失败，请调整参数后重试。');
+						}
+
+						return {
+							complexPolygon,
+							imageWidth: rendered.imageWidthMil,
+							imageHeight: rendered.imageHeightMil,
+						};
+					})());
+				}
+
+				const asset = await assetCache.get(placement.text);
+				const topLeft = getImageTopLeftFromCenter(
+					placement.x,
+					placement.y,
+					asset.imageWidth,
+					asset.imageHeight,
+					placement.rotation,
+				);
+
+				artifacts.push({
+					type: 'image',
+					text: placement.text,
+					rowIndex: row.index,
+					padIndex,
+					centerX: placement.x,
+					centerY: placement.y,
+					topLeftX: topLeft.x,
+					topLeftY: topLeft.y,
+					imageWidth: asset.imageWidth,
+					imageHeight: asset.imageHeight,
+					horizonMirror: false,
+					rotation: placement.rotation,
+					complexPolygon: asset.complexPolygon,
+				});
 			}
-
-			const asset = await assetCache.get(placement.text);
-			const topLeft = getImageTopLeftFromCenter(
-				placement.x,
-				placement.y,
-				asset.imageWidth,
-				asset.imageHeight,
-				placement.rotation,
-			);
-
-			artifacts.push({
-				type: 'image',
-				text: placement.text,
-				centerX: placement.x,
-				centerY: placement.y,
-				topLeftX: topLeft.x,
-				topLeftY: topLeft.y,
-				imageWidth: asset.imageWidth,
-				imageHeight: asset.imageHeight,
-				horizonMirror: false,
-				rotation: placement.rotation,
-				complexPolygon: asset.complexPolygon,
-				previewSource: asset.previewSource,
-			});
 		}
 
 		return {
 			layer: targetLayer,
+			header,
 			items: artifacts.concat(getHeaderShellItems(header, settings)),
 		};
 	}
 
-	function getPlacementAnchor(items) {
-		if (!items.length) {
-			return { x: 0, y: 0 };
-		}
-		const { minX, maxX, minY, maxY } = getItemsBounds(items);
+	function waitForRangeSelection() {
+		return new Promise((resolve, reject) => {
+			const followMouseTip = '请在 PCB 画布上框选生成范围。';
+			const rangePoints = [];
+			let finished = false;
 
-		return {
-			x: (minX + maxX) / 2,
-			y: (minY + maxY) / 2,
-		};
-	}
+			function cleanup() {
+				try {
+					eda.pcb_Event.removeEventListener(RANGE_SELECTION_EVENT_ID);
+				}
+				catch {}
 
-	function translateArtifactsToMouse(items, mousePosition) {
-		const anchor = getPlacementAnchor(items);
-		const deltaX = mousePosition.x - anchor.x;
-		const deltaY = mousePosition.y - anchor.y;
-
-		return items.map((item) => {
-			if (item.type === 'image') {
-				return {
-					...item,
-					centerX: item.centerX + deltaX,
-					centerY: item.centerY + deltaY,
-					topLeftX: item.topLeftX + deltaX,
-					topLeftY: item.topLeftY + deltaY,
-				};
+				void eda.sys_Message.removeFollowMouseTip(followMouseTip).catch(() => {});
 			}
 
-			return {
-				...item,
-				startX: item.startX + deltaX,
-				startY: item.startY + deltaY,
-				endX: item.endX + deltaX,
-				endY: item.endY + deltaY,
-				points: item.points.map((point) => ({
-					x: point.x + deltaX,
-					y: point.y + deltaY,
-				})),
-			};
+			if (eda.pcb_Event.isEventListenerAlreadyExist(RANGE_SELECTION_EVENT_ID)) {
+				eda.pcb_Event.removeEventListener(RANGE_SELECTION_EVENT_ID);
+			}
+
+			void eda.sys_Message.showFollowMouseTip(followMouseTip).catch(() => {});
+			eda.sys_Message.showToastMessage('请在 PCB 中框选生成范围。', ESYS_ToastMessageType.INFO, 3);
+
+			eda.pcb_Event.addMouseEventListener(RANGE_SELECTION_EVENT_ID, 'selected', async () => {
+				if (finished) {
+					return;
+				}
+
+				try {
+					const currentMousePosition = await eda.pcb_SelectControl.getCurrentMousePosition();
+					if (!currentMousePosition) {
+						return;
+					}
+
+					rangePoints.push({
+						x: Number(currentMousePosition.x) || 0,
+						y: Number(currentMousePosition.y) || 0,
+					});
+
+					if (rangePoints.length < 2) {
+						return;
+					}
+
+					const startPoint = rangePoints[0];
+					const endPoint = rangePoints[1];
+					if (Math.hypot(startPoint.x - endPoint.x, startPoint.y - endPoint.y) < MIN_RANGE_SELECTION_DISTANCE) {
+						rangePoints.length = 0;
+						eda.sys_Message.showToastMessage('请拖动框选一个范围，不要单击。', ESYS_ToastMessageType.WARNING, 3);
+						return;
+					}
+
+					finished = true;
+					cleanup();
+					resolve({
+						startPoint,
+						endPoint,
+					});
+				}
+				catch (error) {
+					finished = true;
+					cleanup();
+					reject(error);
+				}
+			}, false);
 		});
 	}
 
-	function getPreviewImageTopLeft(items, previewAsset) {
-		const bounds = getItemsBounds(items);
-		return {
-			x: bounds.minX - previewAsset.paddingMil,
-			y: bounds.maxY + previewAsset.paddingMil,
-		};
-	}
-
-	async function buildPreviewAsset(items, settings) {
-		const bounds = getItemsBounds(items);
-		const bboxWidth = Math.max(bounds.maxX - bounds.minX, 1);
-		const bboxHeight = Math.max(bounds.maxY - bounds.minY, 1);
-		const longestSide = Math.max(bboxWidth, bboxHeight, 1);
-		const scale = clamp(COMBINED_RENDER_TARGET_PX / longestSide, COMBINED_RENDER_MIN_SCALE, COMBINED_RENDER_MAX_SCALE);
-		const paddingPx = 18;
-		const canvas = document.createElement('canvas');
-		const canvasWidth = Math.max(Math.ceil(bboxWidth * scale + paddingPx * 2), 48);
-		const canvasHeight = Math.max(Math.ceil(bboxHeight * scale + paddingPx * 2), 48);
-		canvas.width = canvasWidth;
-		canvas.height = canvasHeight;
-
-		const context = canvas.getContext('2d');
-		if (!context) {
-			throw new Error('生成失败，请重试。');
-		}
-
-		function toCanvasX(x) {
-			return (x - bounds.minX) * scale + paddingPx;
-		}
-
-		function toCanvasY(y) {
-			return (bounds.maxY - y) * scale + paddingPx;
-		}
-
-		context.clearRect(0, 0, canvasWidth, canvasHeight);
-		context.strokeStyle = '#000000';
-		context.fillStyle = '#000000';
-		context.lineJoin = 'round';
-		context.lineCap = 'round';
-		context.imageSmoothingEnabled = false;
-
-		for (const item of items) {
-			if (item.type === 'image') {
-				context.save();
-				context.translate(toCanvasX(item.centerX), toCanvasY(item.centerY));
-				context.rotate((-item.rotation * Math.PI) / 180);
-				context.drawImage(
-					item.previewSource,
-					-item.imageWidth * scale / 2,
-					-item.imageHeight * scale / 2,
-					item.imageWidth * scale,
-					item.imageHeight * scale,
-				);
-				context.restore();
-				continue;
-			}
-
-			context.save();
-			context.beginPath();
-			item.points.forEach((point, index) => {
-				const x = toCanvasX(point.x);
-				const y = toCanvasY(point.y);
-				if (index === 0) {
-					context.moveTo(x, y);
-				}
-				else {
-					context.lineTo(x, y);
-				}
-			});
-			context.closePath();
-			context.lineWidth = Math.max(item.lineWidth * scale, 1);
-			context.stroke();
-			context.restore();
-		}
-
-		const complexPolygon = await eda.pcb_MathPolygon.convertImageToComplexPolygon(
-			dataUrlToBlob(canvas.toDataURL('image/png')),
-			canvas.width,
-			canvas.height,
-			0.3,
-			0.9,
-			1,
-			2,
-			false,
-			false,
-		);
-
-		if (!complexPolygon) {
-			throw new Error('生成失败，请重试。');
-		}
-
-		const renderedWidth = canvas.width / scale;
-		const renderedHeight = canvas.height / scale;
-		const paddingMil = paddingPx / scale;
-		return {
-			complexPolygon,
-			imageWidth: renderedWidth,
-			imageHeight: renderedHeight,
-			paddingMil,
-		};
-	}
-
 	async function createCombinedSilkAtMouse(artifacts, settings) {
-		const mousePosition = await eda.pcb_SelectControl.getCurrentMousePosition();
-		if (!mousePosition) {
-			throw new Error('请先把鼠标移动到 PCB 画布上。');
-		}
-
-		const translatedItems = translateArtifactsToMouse(artifacts.items, mousePosition);
-		const previewAsset = await buildPreviewAsset(artifacts.items, settings);
-		const previewTopLeft = getPreviewImageTopLeft(translatedItems, previewAsset);
-		const createdImage = await eda.pcb_PrimitiveImage.create(
-			previewTopLeft.x,
-			previewTopLeft.y,
-			previewAsset.complexPolygon,
-			artifacts.layer,
-			previewAsset.imageWidth,
-			previewAsset.imageHeight,
-			0,
-			false,
-			false,
-		);
-
-		if (!createdImage) {
+		const selection = await waitForRangeSelection();
+		const translatedItems = layoutArtifactsFromRange(artifacts, selection.startPoint, selection.endPoint, settings);
+		const finalHandles = await createFinalGroup(artifacts.layer, translatedItems, false);
+		if (!finalHandles.length) {
 			throw new Error('生成失败，请重试。');
 		}
 
-		return createdImage;
+		try {
+			const totalCreated = await finalizePlacedGroup(artifacts.layer, translatedItems, finalHandles);
+			return {
+				totalCreated,
+				handles: finalHandles,
+			};
+		}
+		catch (error) {
+			await deleteFinalGroup(finalHandles).catch(() => {});
+			throw error;
+		}
 	}
 
 	async function createFinalGroup(layer, items, primitiveLock) {
@@ -1457,83 +1383,6 @@
 			}
 		}
 		return handles;
-	}
-
-	async function updateFinalGroup(handles, items) {
-		if (!handles.length || handles.length !== items.length) {
-			throw new Error('移动失败，请重试。');
-		}
-
-		const updatedHandles = [];
-		for (let index = 0; index < handles.length; index += 1) {
-			const handle = handles[index];
-			const item = items[index];
-			if (handle.type === 'image' && item.type === 'image') {
-				const asyncImage = handle.primitive.toAsync();
-				asyncImage.setState_X(item.topLeftX).setState_Y(item.topLeftY);
-				updatedHandles.push({
-					type: 'image',
-					primitive: await asyncImage.done(),
-				});
-				continue;
-			}
-
-			if (handle.type === 'line' && item.type === 'line') {
-				const asyncLine = handle.primitive.toAsync();
-				asyncLine
-					.setState_StartX(item.startX)
-					.setState_StartY(item.startY)
-					.setState_EndX(item.endX)
-					.setState_EndY(item.endY);
-				updatedHandles.push({
-					type: 'line',
-					primitive: await asyncLine.done(),
-				});
-				continue;
-			}
-
-			throw new Error('移动失败，请重试。');
-		}
-
-		return updatedHandles;
-	}
-
-	async function setFinalGroupLock(handles, primitiveLock) {
-		const updatedHandles = [];
-		for (const handle of handles) {
-			if (handle.type === 'image') {
-				const asyncImage = handle.primitive.toAsync();
-				asyncImage.setState_PrimitiveLock(primitiveLock);
-				updatedHandles.push({
-					type: 'image',
-					primitive: await asyncImage.done(),
-				});
-				continue;
-			}
-
-			if (handle.type === 'line') {
-				const asyncLine = handle.primitive.toAsync();
-				asyncLine.setState_PrimitiveLock(primitiveLock);
-				updatedHandles.push({
-					type: 'line',
-					primitive: await asyncLine.done(),
-				});
-				continue;
-			}
-
-			throw new Error('锁定失败，请重试。');
-		}
-
-		return updatedHandles;
-	}
-
-	async function setPreviewPrimitiveLock(previewPrimitive, primitiveLock) {
-		if (!previewPrimitive) {
-			throw new Error('预览生成失败，请重试。');
-		}
-		const asyncPreview = previewPrimitive.toAsync();
-		asyncPreview.setState_PrimitiveLock(primitiveLock);
-		return await asyncPreview.done();
 	}
 
 	async function deleteFinalGroup(handles) {
@@ -1654,220 +1503,6 @@
 		return headers[0];
 	}
 
-	function waitForPlacementConfirmation(header, artifacts, settings) {
-		return new Promise((resolve, reject) => {
-			if (eda.pcb_Event.isEventListenerAlreadyExist(PLACEMENT_EVENT_ID)) {
-				eda.pcb_Event.removeEventListener(PLACEMENT_EVENT_ID);
-			}
-
-			let previewPrimitive;
-			let previewAsset;
-			const previewAssetPromise = buildPreviewAsset(artifacts.items, settings);
-			let pendingMousePosition;
-			let currentPreviewItems;
-			let isUpdatingPreview = false;
-			let isEnding = false;
-			const placementMeta = getPlacementMeta(header);
-			const followMouseTip = '移动鼠标预览位置，按 Enter 确认，按 Esc 取消。';
-
-			async function deletePreviewPrimitive() {
-				if (!previewPrimitive) {
-					return;
-				}
-				await eda.pcb_PrimitiveImage.delete(previewPrimitive);
-				previewPrimitive = undefined;
-			}
-
-			async function syncPlacementToMouse(mousePosition) {
-				if (!previewAsset) {
-					previewAsset = await previewAssetPromise;
-				}
-				const translatedItems = translateArtifactsToMouse(artifacts.items, mousePosition);
-				currentPreviewItems = translatedItems;
-				const previewTopLeft = getPreviewImageTopLeft(translatedItems, previewAsset);
-				if (!previewPrimitive) {
-					previewPrimitive = await eda.pcb_PrimitiveImage.create(
-						previewTopLeft.x,
-						previewTopLeft.y,
-						previewAsset.complexPolygon,
-						artifacts.layer,
-						previewAsset.imageWidth,
-						previewAsset.imageHeight,
-						0,
-						false,
-						false,
-					);
-					if (!previewPrimitive) {
-						throw new Error('预览生成失败，请重试。');
-					}
-					setPlacementStatus('移动鼠标预览位置，按 Enter 确认，按 Esc 取消。', placementMeta);
-				}
-				else {
-					const asyncPreview = previewPrimitive.toAsync();
-					asyncPreview.setState_X(previewTopLeft.x).setState_Y(previewTopLeft.y);
-					previewPrimitive = await asyncPreview.done();
-				}
-			}
-
-			async function flushPreviewQueue() {
-				if (isUpdatingPreview || isEnding) {
-					return;
-				}
-				isUpdatingPreview = true;
-				try {
-					while (pendingMousePosition && !isEnding) {
-						const mousePosition = pendingMousePosition;
-						pendingMousePosition = undefined;
-						await syncPlacementToMouse(mousePosition);
-					}
-				}
-				finally {
-					isUpdatingPreview = false;
-				}
-			}
-
-			async function cleanupPreview(deletePreview) {
-				eda.pcb_Event.removeEventListener(PLACEMENT_EVENT_ID);
-				window.removeEventListener('keydown', handlePlacementKeydown, true);
-				elements.confirmPlacement.removeEventListener('click', handleConfirmClick);
-				elements.cancelPlacement.removeEventListener('click', handleCancelClick);
-				await unregisterPlacementShortcuts();
-				await eda.sys_Message.removeFollowMouseTip(followMouseTip).catch(() => {});
-
-				if (deletePreview) {
-					await deletePreviewPrimitive();
-				}
-			}
-
-			async function confirmPlacement() {
-				if (isEnding) {
-					return;
-				}
-				isEnding = true;
-				setPlacementStatus('正在确认...', placementMeta);
-
-				try {
-					if (!currentPreviewItems) {
-						throw new Error('请先移动鼠标预览位置。');
-					}
-
-					if (isUpdatingPreview) {
-						while (isUpdatingPreview) {
-							await new Promise((next) => setTimeout(next, 16));
-						}
-					}
-
-					if (!currentPreviewItems) {
-						throw new Error('请先移动鼠标预览位置。');
-					}
-
-					const translatedItems = currentPreviewItems.map((item) => ({ ...item }));
-					await cleanupPreview(false);
-					await deleteExistingArtifacts(artifacts.layer, translatedItems);
-					const finalHandles = await createFinalGroup(artifacts.layer, translatedItems, false);
-					if (!finalHandles.length) {
-						throw new Error('生成失败，请重试。');
-					}
-					await deletePreviewPrimitive();
-					setPlacementMode(false);
-					resolve({ cancelled: false, totalCreated: finalHandles.length });
-					void eda.pcb_SelectControl.clearSelected().catch(() => {});
-				}
-				catch (error) {
-					await cleanupPreview(true).catch(() => {});
-					setPlacementMode(false);
-					reject(error);
-				}
-			}
-
-			async function cancelPlacement() {
-				if (isEnding) {
-					return;
-				}
-				isEnding = true;
-				setPlacementStatus('正在取消...', placementMeta);
-
-				try {
-					await cleanupPreview(true);
-					setPlacementMode(false);
-					resolve({ cancelled: true, totalCreated: 0 });
-				}
-				catch (error) {
-					setPlacementMode(false);
-					reject(error);
-				}
-			}
-
-			function handlePlacementKeydown(event) {
-				if (event.key === 'Enter') {
-					event.preventDefault();
-					event.stopPropagation();
-					void confirmPlacement();
-				}
-				else if (event.key === 'Escape') {
-					event.preventDefault();
-					event.stopPropagation();
-					void cancelPlacement();
-				}
-			}
-
-			function handleConfirmClick() {
-				void confirmPlacement();
-			}
-
-			function handleCancelClick() {
-				void cancelPlacement();
-			}
-
-			setPlacementMode(true, placementMeta);
-			document.body.tabIndex = -1;
-			document.body.focus();
-			if (document.activeElement && typeof document.activeElement.blur === 'function') {
-				document.activeElement.blur();
-			}
-
-			elements.confirmPlacement.addEventListener('click', handleConfirmClick);
-			elements.cancelPlacement.addEventListener('click', handleCancelClick);
-			window.addEventListener('keydown', handlePlacementKeydown, true);
-			void registerPlacementShortcuts(confirmPlacement, cancelPlacement);
-
-			void eda.sys_Message.showFollowMouseTip(followMouseTip).catch(() => {});
-
-			eda.pcb_Event.addMouseEventListener(PLACEMENT_EVENT_ID, 'move', async () => {
-				try {
-					const mousePosition = await eda.pcb_SelectControl.getCurrentMousePosition();
-					if (!mousePosition || isEnding) {
-						return;
-					}
-					pendingMousePosition = mousePosition;
-					void flushPreviewQueue();
-				}
-				catch (error) {
-					await cleanupPreview(true).catch(() => {});
-					setPlacementMode(false);
-					reject(error);
-				}
-			}, false);
-
-			void (async () => {
-				try {
-					previewAsset = await previewAssetPromise;
-					const initialMousePosition = await eda.pcb_SelectControl.getCurrentMousePosition();
-					if (!initialMousePosition || isEnding) {
-						return;
-					}
-					pendingMousePosition = initialMousePosition;
-					await flushPreviewQueue();
-				}
-				catch (error) {
-					await cleanupPreview(true).catch(() => {});
-					setPlacementMode(false);
-					reject(error);
-				}
-			})();
-		});
-	}
-
 	async function startPlacement() {
 		syncSettingsFromForm();
 
@@ -1880,11 +1515,11 @@
 				return;
 			}
 
-			await createCombinedSilkAtMouse(artifacts, placementSettings);
-			eda.sys_Message.showToastMessage('已生成到鼠标处。', ESYS_ToastMessageType.SUCCESS, 2);
+			const result = await createCombinedSilkAtMouse(artifacts, placementSettings);
+			eda.sys_Message.showToastMessage(`已按框选范围生成，共 ${result.totalCreated} 个图元。`, ESYS_ToastMessageType.SUCCESS, 2);
+			void eda.pcb_SelectControl.clearSelected().catch(() => {});
 		}
 		catch (error) {
-			setPlacementMode(false);
 			const message = error instanceof Error ? error.message : String(error);
 			eda.sys_Message.showToastMessage(message, ESYS_ToastMessageType.ERROR, 4);
 		}

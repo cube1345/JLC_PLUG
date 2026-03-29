@@ -1,10 +1,10 @@
 {
-	"name": "symbols",
+	"name": "silkprint",
 	"uuid": "2eec78240b2449dd93414d08dbb3fa4e",
-	"displayName": "排针丝印",
+	"displayName": "silkprint",
 	"description": "为排针一键生成丝印",
-	"version": "1.0.16",
-	"publisher": "cube",
+	"version": "1.3.0",
+	"publisher": "marcus",
 	"engines": {
 		"eda": "^3.0.0"
 	},
