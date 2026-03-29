@@ -13,7 +13,7 @@
 					<p class="eyebrow">Silkprint v2</p>
 					<h1>丝印一键生成</h1>
 				</div>
-				<p id="panel-subtitle">先选中排针，再设置参数并框选生成范围。</p>
+				<p id="panel-subtitle">先选中排针，再设置参数并生成或删除丝印。</p>
 			</header>
 
 			<div class="tab-strip config-only" role="tablist" aria-label="丝印一键生成设置分组">
@@ -128,20 +128,21 @@
 					<ol class="guide-list">
 						<li>先在 PCB 里选中一个排针或它的焊盘。</li>
 						<li>在“快速”和“布局”里调整参数。</li>
-						<li>点击“框选范围生成”。</li>
-						<li>回到 PCB 画布上框选目标放置范围。</li>
-						<li>生成后可继续拖动和摆放。</li>
+						<li>点击“生成”后回到 PCB 画布框选放置范围。</li>
+						<li>点击“删除”可清掉该排针已生成的丝印。</li>
+						<li>旧版本生成的丝印若无记录，会要求再框选一次删除范围。</li>
 					</ol>
 				</section>
 			</section>
 
 			<div class="actions config-only">
-				<button id="reset" class="ghost" type="button">恢复默认</button>
-				<button id="generate" class="primary" type="button">框选范围生成</button>
+				<button id="reset" class="ghost" type="button">默认</button>
+				<button id="delete-generated" class="danger" type="button">删除</button>
+				<button id="generate" class="primary" type="button">生成</button>
 			</div>
 
 			<p class="hint config-only">
-				先选中排针，再框选生成范围。
+				先选中排针，再生成或删除已生成丝印。
 			</p>
 		</div>
 

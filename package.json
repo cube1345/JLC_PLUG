@@ -1,6 +1,6 @@
 {
 	"name": "symbols",
-	"version": "2.0.3",
+	"version": "2.1.0",
 	"description": "根据排针排母网络一键生成/管理丝印",
 	"author": "marcus",
 	"license": "Apache-2.0",

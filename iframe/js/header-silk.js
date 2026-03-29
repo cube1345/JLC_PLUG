@@ -1,5 +1,6 @@
 (function () {
 	const STORAGE_KEY = 'header_silk_settings_v2';
+	const ARTIFACT_STORAGE_KEY = 'header_silk_artifacts_v1';
 	const PANEL_ID = 'header-silk-panel';
 	const PCB_LAYER_TOP = 1;
 	const PCB_LAYER_BOTTOM = 2;
@@ -12,6 +13,7 @@
 	const TEXT_RENDER_MARGIN_Y_MIL = 8;
 	const RANGE_SELECTION_EVENT_ID = 'header-silk-range-select';
 	const MIN_RANGE_SELECTION_DISTANCE = 5;
+	const MAX_STORED_ARTIFACT_GROUPS = 80;
 
 	const DEFAULT_SETTINGS = {
 		fontFamily: '黑体',
@@ -44,6 +46,7 @@
 		includeShell: document.getElementById('include-shell'),
 		invert: document.getElementById('invert'),
 		reset: document.getElementById('reset'),
+		deleteGenerated: document.getElementById('delete-generated'),
 		generate: document.getElementById('generate'),
 		previewCanvas: document.getElementById('preview-canvas'),
 		previewSummary: document.getElementById('preview-summary'),
@@ -320,6 +323,134 @@
 
 	function saveSettings(settings) {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+	}
+
+	function loadArtifactGroups() {
+		try {
+			const saved = JSON.parse(localStorage.getItem(ARTIFACT_STORAGE_KEY) || '[]');
+			return Array.isArray(saved) ? saved.filter(item => item && typeof item === 'object') : [];
+		}
+		catch {
+			return [];
+		}
+	}
+
+	function saveArtifactGroups(groups) {
+		localStorage.setItem(
+			ARTIFACT_STORAGE_KEY,
+			JSON.stringify((Array.isArray(groups) ? groups : []).slice(-MAX_STORED_ARTIFACT_GROUPS)),
+		);
+	}
+
+	function createArtifactGroupId() {
+		return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+	}
+
+	async function getCurrentDocumentScope() {
+		try {
+			const currentDocumentInfo = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+			return {
+				documentUuid: normalizeText(currentDocumentInfo && currentDocumentInfo.uuid),
+				parentProjectUuid: normalizeText(currentDocumentInfo && currentDocumentInfo.parentProjectUuid),
+			};
+		}
+		catch {
+			return {
+				documentUuid: '',
+				parentProjectUuid: '',
+			};
+		}
+	}
+
+	function doesArtifactGroupMatchHeader(group, scope, header) {
+		if (!group || typeof group !== 'object') {
+			return false;
+		}
+
+		if (normalizeText(group.headerComponentId) !== normalizeText(header.componentId)) {
+			return false;
+		}
+
+		const groupDocumentUuid = normalizeText(group.documentUuid);
+		const groupProjectUuid = normalizeText(group.parentProjectUuid);
+		if (scope.documentUuid && groupDocumentUuid && groupDocumentUuid !== scope.documentUuid) {
+			return false;
+		}
+		if (scope.parentProjectUuid && groupProjectUuid && groupProjectUuid !== scope.parentProjectUuid) {
+			return false;
+		}
+		return true;
+	}
+
+	function collectPrimitiveIdsFromHandles(handles) {
+		return handles.reduce((accumulator, handle) => {
+			const primitiveId = handle && handle.primitive && handle.primitive.getState_PrimitiveId && handle.primitive.getState_PrimitiveId();
+			if (!primitiveId) {
+				return accumulator;
+			}
+			if (handle.type === 'image') {
+				accumulator.imagePrimitiveIds.push(String(primitiveId));
+			}
+			else if (handle.type === 'line') {
+				accumulator.linePrimitiveIds.push(String(primitiveId));
+			}
+			return accumulator;
+		}, {
+			imagePrimitiveIds: [],
+			linePrimitiveIds: [],
+		});
+	}
+
+	async function rememberGeneratedArtifacts(header, layer, handles) {
+		const primitiveIds = collectPrimitiveIdsFromHandles(handles);
+		if (!primitiveIds.imagePrimitiveIds.length && !primitiveIds.linePrimitiveIds.length) {
+			return;
+		}
+
+		const scope = await getCurrentDocumentScope();
+		const groups = loadArtifactGroups();
+		groups.push({
+			id: createArtifactGroupId(),
+			documentUuid: scope.documentUuid,
+			parentProjectUuid: scope.parentProjectUuid,
+			headerComponentId: normalizeText(header.componentId),
+			designator: normalizeText(header.designator),
+			layer: Number(layer) || 0,
+			imagePrimitiveIds: primitiveIds.imagePrimitiveIds,
+			linePrimitiveIds: primitiveIds.linePrimitiveIds,
+			createdAt: new Date().toISOString(),
+		});
+		saveArtifactGroups(groups);
+	}
+
+	async function resolveExistingImagesByIds(primitiveIds) {
+		const normalizedIds = [...new Set(asArray(primitiveIds).map(item => normalizeText(item)).filter(Boolean))];
+		if (!normalizedIds.length) {
+			return [];
+		}
+
+		return asArray(await eda.pcb_PrimitiveImage.get(normalizedIds));
+	}
+
+	async function resolveExistingLinesByIds(primitiveIds) {
+		const normalizedIds = [...new Set(asArray(primitiveIds).map(item => normalizeText(item)).filter(Boolean))];
+		if (!normalizedIds.length) {
+			return [];
+		}
+
+		return asArray(await eda.pcb_PrimitiveLine.get(normalizedIds));
+	}
+
+	async function deleteArtifactGroupByRecord(group) {
+		const images = await resolveExistingImagesByIds(group && group.imagePrimitiveIds);
+		const lines = await resolveExistingLinesByIds(group && group.linePrimitiveIds);
+		if (images.length) {
+			await eda.pcb_PrimitiveImage.delete(images);
+		}
+		if (lines.length) {
+			await eda.pcb_PrimitiveLine.delete(lines);
+		}
+		return images.length + lines.length;
 	}
 
 	function activateTab(tabName) {
@@ -656,6 +787,22 @@
 				return { x: centerX + height / 2, y: centerY + width / 2 };
 			default:
 				return { x: centerX - width / 2, y: centerY + height / 2 };
+		}
+	}
+
+	function getImageCenterFromTopLeft(topLeftX, topLeftY, width, height, rotation) {
+		const normalizedRotation = ((Math.round(rotation) % 360) + 360) % 360;
+		switch (normalizedRotation) {
+			case 0:
+				return { x: topLeftX + width / 2, y: topLeftY - height / 2 };
+			case 90:
+				return { x: topLeftX + height / 2, y: topLeftY + width / 2 };
+			case 180:
+				return { x: topLeftX - width / 2, y: topLeftY + height / 2 };
+			case 270:
+				return { x: topLeftX - height / 2, y: topLeftY - width / 2 };
+			default:
+				return { x: topLeftX + width / 2, y: topLeftY - height / 2 };
 		}
 	}
 
@@ -1175,6 +1322,76 @@
 		return placedItems.concat(getShellItemsFromRange(startPoint, endPoint, settings));
 	}
 
+	function getDeleteTargetLayers(header, settings) {
+		const layers = new Set([header.defaultTextLayer]);
+		if (settings.layerMode === 'top') {
+			layers.add(PCB_LAYER_TOP_SILK);
+		}
+		else if (settings.layerMode === 'bottom') {
+			layers.add(PCB_LAYER_BOTTOM_SILK);
+		}
+		return Array.from(layers);
+	}
+
+	function getDeletionTargetsFromRange(header, startPoint, endPoint) {
+		const orientation = getRangeOrientation(startPoint, endPoint);
+		const rowIndexes = [...new Set(header.rows.map(row => row.index))].sort((a, b) => a - b);
+		const rowPads = rowIndexes.map((rowIndex) => {
+			const row = header.rows.find(item => item.index === rowIndex);
+			const pads = row
+				? [...row.pads].sort((leftPad, rightPad) => {
+					const padNumberOrder = comparePadNumbers(leftPad.padNumber, rightPad.padNumber);
+					if (padNumberOrder !== 0) {
+						return padNumberOrder;
+					}
+					return leftPad.majorProjection - rightPad.majorProjection;
+				})
+				: [];
+			return {
+				rowIndex,
+				pads,
+			};
+		});
+		const rowCount = rowPads.length || 1;
+		const minorCenters = getRangeMinorCenters(startPoint, endPoint, rowCount);
+		const rowCenterByIndex = new Map(rowIndexes.map((rowIndex, index) => [rowIndex, minorCenters[index]]));
+		const targets = [];
+
+		for (const rowItem of rowPads) {
+			const distributedCenters = getRangeDistributedCenters(startPoint, endPoint, rowItem.pads.length);
+			const rowMinorCenter = rowCenterByIndex.get(rowItem.rowIndex);
+
+			for (let index = 0; index < rowItem.pads.length; index += 1) {
+				const distributedCenter = distributedCenters[index];
+				targets.push({
+					rowIndex: rowItem.rowIndex,
+					padNumber: rowItem.pads[index].padNumber,
+					centerX: orientation === 'horizontal' ? distributedCenter.x : rowMinorCenter,
+					centerY: orientation === 'horizontal' ? rowMinorCenter : distributedCenter.y,
+				});
+			}
+		}
+
+		const bounds = getRangeBounds(startPoint, endPoint);
+		const majorSpan = orientation === 'horizontal' ? bounds.maxX - bounds.minX : bounds.maxY - bounds.minY;
+		const minorSpan = orientation === 'horizontal' ? bounds.maxY - bounds.minY : bounds.maxX - bounds.minX;
+		const maxItemsInRow = Math.max(...rowPads.map(rowItem => rowItem.pads.length), 1);
+		const longitudinalTolerance = clamp((majorSpan / Math.max(maxItemsInRow, 1)) * 0.38, 8, 28);
+		const crossTolerance = rowCount > 1
+			? clamp((minorSpan / rowCount) * 0.42, 8, 28)
+			: clamp(header.nominalPitch * 0.45, 8, 24);
+		const tolerance = Math.max(longitudinalTolerance, crossTolerance);
+
+		return {
+			targets,
+			shellItems: getShellItemsFromRange(startPoint, endPoint, {
+				includeShell: true,
+				strokeWidthMil: Math.max(header.nominalPitch * 0.18, 4),
+			}),
+			tolerance,
+		};
+	}
+
 	function getHeaderShellItems(header, settings) {
 		if (!settings.includeShell) {
 			return [];
@@ -1285,9 +1502,12 @@
 		};
 	}
 
-	function waitForRangeSelection() {
+	function waitForRangeSelection(options) {
 		return new Promise((resolve, reject) => {
-			const followMouseTip = '请在 PCB 画布上框选生成范围。';
+			const selectionOptions = options || {};
+			const followMouseTip = selectionOptions.followMouseTip || '请在 PCB 画布上框选生成范围。';
+			const toastMessage = selectionOptions.toastMessage || '请在 PCB 中框选生成范围。';
+			const tooSmallMessage = selectionOptions.tooSmallMessage || '请拖动框选一个范围，不要单击。';
 			const rangePoints = [];
 			let finished = false;
 
@@ -1305,7 +1525,7 @@
 			}
 
 			void eda.sys_Message.showFollowMouseTip(followMouseTip).catch(() => {});
-			eda.sys_Message.showToastMessage('请在 PCB 中框选生成范围。', ESYS_ToastMessageType.INFO, 3);
+			eda.sys_Message.showToastMessage(toastMessage, ESYS_ToastMessageType.INFO, 3);
 
 			eda.pcb_Event.addMouseEventListener(RANGE_SELECTION_EVENT_ID, 'selected', async () => {
 				if (finished) {
@@ -1331,7 +1551,7 @@
 					const endPoint = rangePoints[1];
 					if (Math.hypot(startPoint.x - endPoint.x, startPoint.y - endPoint.y) < MIN_RANGE_SELECTION_DISTANCE) {
 						rangePoints.length = 0;
-						eda.sys_Message.showToastMessage('请拖动框选一个范围，不要单击。', ESYS_ToastMessageType.WARNING, 3);
+						eda.sys_Message.showToastMessage(tooSmallMessage, ESYS_ToastMessageType.WARNING, 3);
 						return;
 					}
 
@@ -1352,7 +1572,11 @@
 	}
 
 	async function createCombinedSilkAtMouse(artifacts, settings) {
-		const selection = await waitForRangeSelection();
+		const selection = await waitForRangeSelection({
+			followMouseTip: '请在 PCB 画布上框选生成范围。',
+			toastMessage: '请在 PCB 中框选生成范围。',
+			tooSmallMessage: '请拖动框选一个范围，不要单击。',
+		});
 		const translatedItems = layoutArtifactsFromRange(artifacts, selection.startPoint, selection.endPoint, settings);
 		const finalHandles = await createFinalGroup(artifacts.layer, translatedItems, false);
 		if (!finalHandles.length) {
@@ -1370,6 +1594,124 @@
 			await deleteFinalGroup(finalHandles).catch(() => {});
 			throw error;
 		}
+	}
+
+	function findNearestImageForTarget(existingImages, usedPrimitiveIds, target, tolerance) {
+		let bestMatch;
+		for (const existingImage of existingImages) {
+			const primitiveId = normalizeText(existingImage.getState_PrimitiveId && existingImage.getState_PrimitiveId());
+			if (!primitiveId || usedPrimitiveIds.has(primitiveId)) {
+				continue;
+			}
+
+			const center = getImageCenterFromTopLeft(
+				Number(existingImage.getState_X && existingImage.getState_X()) || 0,
+				Number(existingImage.getState_Y && existingImage.getState_Y()) || 0,
+				Number(existingImage.getState_Width && existingImage.getState_Width()) || 0,
+				Number(existingImage.getState_Height && existingImage.getState_Height()) || 0,
+				Number(existingImage.getState_Rotation && existingImage.getState_Rotation()) || 0,
+			);
+			const distance = Math.hypot(center.x - target.centerX, center.y - target.centerY);
+			if (distance > tolerance) {
+				continue;
+			}
+
+			if (!bestMatch || distance < bestMatch.distance) {
+				bestMatch = {
+					distance,
+					primitiveId,
+					primitive: existingImage,
+				};
+			}
+		}
+		return bestMatch;
+	}
+
+	function findNearestLineForTarget(existingLines, usedPrimitiveIds, target, tolerance) {
+		let bestMatch;
+		for (const existingLine of existingLines) {
+			const primitiveId = normalizeText(existingLine.getState_PrimitiveId && existingLine.getState_PrimitiveId());
+			if (!primitiveId || usedPrimitiveIds.has(primitiveId)) {
+				continue;
+			}
+
+			const sameDirection = Math.hypot(
+				(Number(existingLine.getState_StartX && existingLine.getState_StartX()) || 0) - target.startX,
+				(Number(existingLine.getState_StartY && existingLine.getState_StartY()) || 0) - target.startY,
+			) + Math.hypot(
+				(Number(existingLine.getState_EndX && existingLine.getState_EndX()) || 0) - target.endX,
+				(Number(existingLine.getState_EndY && existingLine.getState_EndY()) || 0) - target.endY,
+			);
+			const reverseDirection = Math.hypot(
+				(Number(existingLine.getState_StartX && existingLine.getState_StartX()) || 0) - target.endX,
+				(Number(existingLine.getState_StartY && existingLine.getState_StartY()) || 0) - target.endY,
+			) + Math.hypot(
+				(Number(existingLine.getState_EndX && existingLine.getState_EndX()) || 0) - target.startX,
+				(Number(existingLine.getState_EndY && existingLine.getState_EndY()) || 0) - target.startY,
+			);
+			const distance = Math.min(sameDirection, reverseDirection);
+			if (distance > tolerance * 2) {
+				continue;
+			}
+
+			if (!bestMatch || distance < bestMatch.distance) {
+				bestMatch = {
+					distance,
+					primitiveId,
+					primitive: existingLine,
+				};
+			}
+		}
+		return bestMatch;
+	}
+
+	async function deleteArtifactsByRangeSelection(header, settings) {
+		const selection = await waitForRangeSelection({
+			followMouseTip: '请在 PCB 画布上框选要删除的丝印范围。',
+			toastMessage: '请在 PCB 中框选要删除的丝印范围。',
+			tooSmallMessage: '请拖动框选要删除的范围，不要单击。',
+		});
+		const deletionTargets = getDeletionTargetsFromRange(header, selection.startPoint, selection.endPoint);
+		const layers = getDeleteTargetLayers(header, settings);
+		let deletedCount = 0;
+
+		for (const layer of layers) {
+			const existingImages = asArray(await eda.pcb_PrimitiveImage.getAll(layer));
+			const existingLines = asArray(await eda.pcb_PrimitiveLine.getAll(undefined, layer));
+			const usedImageIds = new Set();
+			const usedLineIds = new Set();
+			const imagesToDelete = [];
+			const linesToDelete = [];
+
+			for (const target of deletionTargets.targets) {
+				const match = findNearestImageForTarget(existingImages, usedImageIds, target, deletionTargets.tolerance);
+				if (!match) {
+					continue;
+				}
+				usedImageIds.add(match.primitiveId);
+				imagesToDelete.push(match.primitive);
+			}
+
+			for (const shellItem of deletionTargets.shellItems) {
+				const match = findNearestLineForTarget(existingLines, usedLineIds, shellItem, deletionTargets.tolerance);
+				if (!match) {
+					continue;
+				}
+				usedLineIds.add(match.primitiveId);
+				linesToDelete.push(match.primitive);
+			}
+
+			if (imagesToDelete.length) {
+				await eda.pcb_PrimitiveImage.delete(imagesToDelete);
+				deletedCount += imagesToDelete.length;
+			}
+			if (linesToDelete.length) {
+				await eda.pcb_PrimitiveLine.delete(linesToDelete);
+				deletedCount += linesToDelete.length;
+			}
+		}
+
+		return deletedCount;
 	}
 
 	async function createFinalGroup(layer, items, primitiveLock) {
@@ -1541,7 +1883,43 @@
 			}
 
 			const result = await createCombinedSilkAtMouse(artifacts, placementSettings);
+			await rememberGeneratedArtifacts(header, artifacts.layer, result.handles).catch(() => {});
 			eda.sys_Message.showToastMessage(`已按框选范围生成，共 ${result.totalCreated} 个图元。`, ESYS_ToastMessageType.SUCCESS, 2);
+			void eda.pcb_SelectControl.clearSelected().catch(() => {});
+		}
+		catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			eda.sys_Message.showToastMessage(message, ESYS_ToastMessageType.ERROR, 4);
+		}
+	}
+
+	async function startDeleteGenerated() {
+		syncSettingsFromForm();
+
+		try {
+			const deleteSettings = { ...currentSettings };
+			const header = await resolveSelectedHeader();
+			const scope = await getCurrentDocumentScope();
+			const storedGroups = loadArtifactGroups();
+			const matchedGroups = storedGroups.filter(group => doesArtifactGroupMatchHeader(group, scope, header));
+			let deletedCount = 0;
+
+			if (matchedGroups.length) {
+				for (const group of matchedGroups) {
+					deletedCount += await deleteArtifactGroupByRecord(group);
+				}
+				saveArtifactGroups(storedGroups.filter(group => !doesArtifactGroupMatchHeader(group, scope, header)));
+			}
+			else {
+				deletedCount = await deleteArtifactsByRangeSelection(header, deleteSettings);
+			}
+
+			if (!deletedCount) {
+				eda.sys_Message.showToastMessage('没有找到可删除的丝印。', ESYS_ToastMessageType.WARNING, 3);
+				return;
+			}
+
+			eda.sys_Message.showToastMessage(`已删除 ${deletedCount} 个图元。`, ESYS_ToastMessageType.SUCCESS, 2);
 			void eda.pcb_SelectControl.clearSelected().catch(() => {});
 		}
 		catch (error) {
@@ -1622,6 +2000,10 @@
 			currentSettings = { ...DEFAULT_SETTINGS };
 			saveSettings(currentSettings);
 			applySettings(currentSettings);
+		});
+
+		elements.deleteGenerated.addEventListener('click', () => {
+			void startDeleteGenerated();
 		});
 
 		elements.generate.addEventListener('click', () => {
