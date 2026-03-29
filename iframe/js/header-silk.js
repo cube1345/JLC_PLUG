@@ -17,6 +17,7 @@
 	const AUTO_SHRINK_GAP_RATIO_MINOR = 0.82;
 	const MIN_AUTO_SHRINK_SCALE = 0.68;
 	const MAX_STORED_ARTIFACT_GROUPS = 80;
+	const MAX_HEADER_PARSE_CACHE = 24;
 
 	const DEFAULT_SETTINGS = {
 		fontFamily: '黑体',
@@ -56,6 +57,7 @@
 	};
 
 	let currentSettings = loadSettings();
+	const headerParseCache = new Map();
 
 	function asArray(value) {
 		if (Array.isArray(value)) {
@@ -347,6 +349,38 @@
 
 	function createArtifactGroupId() {
 		return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+	}
+
+	function createHeaderParseCacheKey(componentId, componentLayer, componentX, componentY, componentRotation, componentPadStates) {
+		const padSignature = asArray(componentPadStates)
+			.map(item => `${normalizeText(item && item.primitiveId)}:${normalizeText(item && item.padNumber)}:${normalizeText(item && item.net)}`)
+			.join('|');
+		return [
+			normalizeText(componentId),
+			String(Number(componentLayer) || 0),
+			String(Math.round((Number(componentX) || 0) * 1000) / 1000),
+			String(Math.round((Number(componentY) || 0) * 1000) / 1000),
+			String(Math.round((Number(componentRotation) || 0) * 1000) / 1000),
+			padSignature,
+		].join('::');
+	}
+
+	function rememberHeaderParseCache(cacheKey, header) {
+		if (!cacheKey || !header) {
+			return;
+		}
+
+		if (headerParseCache.has(cacheKey)) {
+			headerParseCache.delete(cacheKey);
+		}
+		headerParseCache.set(cacheKey, header);
+		while (headerParseCache.size > MAX_HEADER_PARSE_CACHE) {
+			const oldestKey = headerParseCache.keys().next().value;
+			if (!oldestKey) {
+				break;
+			}
+			headerParseCache.delete(oldestKey);
+		}
 	}
 
 	async function getCurrentDocumentScope() {
@@ -965,13 +999,31 @@
 	}
 
 	async function buildHeaderComponent(component) {
+		const componentId = String(component.getState_PrimitiveId && component.getState_PrimitiveId());
+		const designator = getComponentDisplayName(component);
+		const componentPadStates = asArray(component.getState_Pads && component.getState_Pads());
+		const componentLayer = Number(component.getState_Layer && component.getState_Layer()) || PCB_LAYER_TOP;
+		const componentX = Number(component.getState_X && component.getState_X()) || 0;
+		const componentY = Number(component.getState_Y && component.getState_Y()) || 0;
+		const componentRotation = Number(component.getState_Rotation && component.getState_Rotation()) || 0;
+		const cacheKey = createHeaderParseCacheKey(
+			componentId,
+			componentLayer,
+			componentX,
+			componentY,
+			componentRotation,
+			componentPadStates,
+		);
+		const cachedHeader = headerParseCache.get(cacheKey);
+		if (cachedHeader) {
+			return cachedHeader;
+		}
+
 		const pads = asArray(await component.getAllPins());
 		if (pads.length < 2) {
 			return undefined;
 		}
 
-		const designator = getComponentDisplayName(component);
-		const componentPadStates = asArray(component.getState_Pads && component.getState_Pads());
 		const componentPadStateByPrimitiveId = new Map();
 		const componentPadStateByPadNumber = new Map();
 		for (const item of componentPadStates) {
@@ -986,39 +1038,45 @@
 			}
 		}
 
-		const componentLayer = Number(component.getState_Layer && component.getState_Layer()) || PCB_LAYER_TOP;
 		const textLayer = componentLayer === PCB_LAYER_BOTTOM ? PCB_LAYER_BOTTOM_SILK : PCB_LAYER_TOP_SILK;
-		const axis = getAxis(pads.map((pad) => ({
-			x: Number(pad.getState_X && pad.getState_X()) || 0,
-			y: Number(pad.getState_Y && pad.getState_Y()) || 0,
-		})));
-
 		const padItems = pads.map((pad) => {
 			const x = Number(pad.getState_X && pad.getState_X()) || 0;
 			const y = Number(pad.getState_Y && pad.getState_Y()) || 0;
 			const primitiveId = normalizeText(pad.getState_PrimitiveId && pad.getState_PrimitiveId());
-			const padNumber = normalizeText(pad.getState_PadNumber && pad.getState_PadNumber());
 			const stateByPrimitiveId = componentPadStateByPrimitiveId.get(primitiveId);
+			const padNumber = normalizeText(
+				(stateByPrimitiveId && stateByPrimitiveId.padNumber)
+				|| (pad.getState_PadNumber && pad.getState_PadNumber()),
+			);
 			const stateByPadNumber = componentPadStateByPadNumber.get(padNumber);
 			const netName = normalizeText(
-				(pad.getState_Net && pad.getState_Net())
-				|| (stateByPrimitiveId && stateByPrimitiveId.net)
+				(stateByPrimitiveId && stateByPrimitiveId.net)
 				|| (stateByPadNumber && stateByPadNumber.net)
+				|| (pad.getState_Net && pad.getState_Net())
 				|| '',
 			);
 
 			return {
+				primitiveId,
 				padNumber,
 				netName,
 				silkLabel: makeSilkLabel(netName, padNumber),
 				x,
 				y,
 				padShape: pad.getState_Pad && pad.getState_Pad(),
-				majorProjection: dot({ x: x - axis.center.x, y: y - axis.center.y }, axis.major),
-				minorProjection: dot({ x: x - axis.center.x, y: y - axis.center.y }, axis.minor),
+				majorProjection: 0,
+				minorProjection: 0,
 				rowIndex: 0,
 			};
 		});
+		const axis = getAxis(padItems.map((pad) => ({
+			x: pad.x,
+			y: pad.y,
+		})));
+		for (const padItem of padItems) {
+			padItem.majorProjection = dot({ x: padItem.x - axis.center.x, y: padItem.y - axis.center.y }, axis.major);
+			padItem.minorProjection = dot({ x: padItem.x - axis.center.x, y: padItem.y - axis.center.y }, axis.minor);
+		}
 
 		const padExtent = median(padItems.map((item) => getPadExtent(item.padShape)).filter((size) => size > 0));
 		const pitch = estimatePitch(padItems.map((item) => item.majorProjection));
@@ -1028,8 +1086,8 @@
 		const recognizedNetCount = padItems.filter((item) => item.netName.length > 0).length;
 		const shellBounds = estimateShellBounds(padItems, rows, pitch || baseSize, padExtent || baseSize);
 
-		return {
-			componentId: String(component.getState_PrimitiveId && component.getState_PrimitiveId()),
+		const header = {
+			componentId,
 			designator,
 			padCount: padItems.length,
 			recognizedNetCount,
@@ -1043,6 +1101,8 @@
 			rows,
 			pads: padItems,
 		};
+		rememberHeaderParseCache(cacheKey, header);
+		return header;
 	}
 
 	function getRowOffsetSign(row, rows) {
