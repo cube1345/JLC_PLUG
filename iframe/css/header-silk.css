@@ -24,7 +24,7 @@ body {
 }
 
 body {
-	padding: 10px;
+	padding: 8px;
 }
 
 .panel {
@@ -32,7 +32,7 @@ body {
 	border: 1px solid var(--line);
 	border-radius: var(--radius);
 	box-shadow: var(--shadow);
-	padding: 12px;
+	padding: 10px;
 	backdrop-filter: blur(8px);
 }
 
@@ -45,7 +45,7 @@ body.placement-active .panel {
 }
 
 .panel-header {
-	margin-bottom: 10px;
+	margin-bottom: 8px;
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
@@ -62,7 +62,7 @@ body.placement-active .panel {
 
 .panel-header h1 {
 	margin: 0;
-	font-size: 18px;
+	font-size: 17px;
 	font-weight: 700;
 	letter-spacing: 0.04em;
 }
@@ -78,8 +78,8 @@ body.placement-active .panel {
 .tab-strip {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 8px;
-	margin-bottom: 10px;
+	gap: 6px;
+	margin-bottom: 8px;
 }
 
 .tab {
@@ -87,8 +87,8 @@ body.placement-active .panel {
 	border-radius: 999px;
 	background: rgba(255, 255, 255, 0.6);
 	color: var(--muted);
-	padding: 8px 10px;
-	font-size: 12px;
+	padding: 7px 8px;
+	font-size: 11px;
 	font-weight: 700;
 	cursor: pointer;
 	transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
@@ -111,22 +111,18 @@ body.placement-active .panel {
 .grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 10px;
+	gap: 8px;
 }
 
 .compact-grid {
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.field-span {
-	grid-column: 1 / -1;
-}
-
 .field {
 	display: flex;
 	flex-direction: column;
-	gap: 5px;
-	font-size: 12px;
+	gap: 4px;
+	font-size: 11px;
 }
 
 .field span,
@@ -138,9 +134,9 @@ body.placement-active .panel {
 .field select {
 	width: 100%;
 	border: 1px solid rgba(110, 83, 53, 0.18);
-	border-radius: 10px;
-	padding: 8px 10px;
-	font-size: 13px;
+	border-radius: 9px;
+	padding: 7px 8px;
+	font-size: 12px;
 	background: rgba(255, 255, 255, 0.78);
 	color: var(--text);
 	outline: none;
@@ -178,8 +174,8 @@ body.placement-active .panel {
 .switch-row {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 10px;
-	margin-top: 10px;
+	gap: 8px;
+	margin-top: 8px;
 }
 
 .toggle {
@@ -187,7 +183,7 @@ body.placement-active .panel {
 	align-items: center;
 	gap: 8px;
 	margin: 0;
-	padding: 9px 10px;
+	padding: 7px 8px;
 	border-radius: 12px;
 	background: rgba(255, 255, 255, 0.56);
 	border: 1px solid rgba(110, 83, 53, 0.12);
@@ -206,16 +202,16 @@ body.placement-active .panel {
 .actions {
 	display: flex;
 	justify-content: space-between;
-	gap: 10px;
-	margin-top: 10px;
+	gap: 8px;
+	margin-top: 8px;
 }
 
 .actions button {
 	flex: 1;
 	border: none;
 	border-radius: 999px;
-	padding: 10px 12px;
-	font-size: 13px;
+	padding: 9px 10px;
+	font-size: 12px;
 	font-weight: 700;
 	cursor: pointer;
 	transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
@@ -242,12 +238,12 @@ body.placement-active .panel {
 }
 
 .hint {
-	margin-top: 10px;
+	margin-top: 8px;
 }
 
 .card {
-	margin-top: 10px;
-	padding: 10px;
+	margin-top: 8px;
+	padding: 8px;
 	border-radius: 16px;
 	border: 1px solid rgba(110, 83, 53, 0.14);
 	background: rgba(255, 255, 255, 0.58);
@@ -258,19 +254,19 @@ body.placement-active .panel {
 }
 
 .card-head {
-	margin-bottom: 8px;
+	margin-bottom: 6px;
 }
 
 .card-head h2 {
 	margin: 0 0 4px;
-	font-size: 14px;
+	font-size: 13px;
 	font-weight: 700;
 }
 
 .card-head p,
 .preview-summary {
 	margin: 0;
-	font-size: 11px;
+	font-size: 10px;
 	line-height: 1.5;
 	color: var(--muted);
 }
@@ -300,15 +296,15 @@ body.placement-active .panel {
 }
 
 .preview-summary {
-	margin-top: 8px;
+	margin-top: 6px;
 }
 
 .guide-list {
 	margin: 0;
-	padding-left: 18px;
+	padding-left: 16px;
 	color: var(--text);
-	font-size: 12px;
-	line-height: 1.55;
+	font-size: 11px;
+	line-height: 1.45;
 }
 
 .guide-list li + li {
