@@ -1,43 +1,76 @@
 [简体中文](./README.md) | [English](./README.en.md) | [繁體中文](./README.zh-Hant.md) | [日本語](./README.ja.md) | [Русский](#)
 
-# pro-api-sdk
+# Silk For Headers
 
-嘉立创EDA & EasyEDA Pro Edition Расширьте возможности инструментов разработки API
+Расширение для PCB-редактора JLCEDA / EasyEDA Pro. Автоматически генерирует надписи шелкографии для гребенок и pin header на основе сетей, подключенных к их площадкам.
 
-<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/stars/easyeda/pro-api-sdk" alt="GitHub Repo Stars" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk/issues" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/issues/easyeda/pro-api-sdk" alt="GitHub Issues" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/repo-size/easyeda/pro-api-sdk" alt="GitHub Repo Size" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/v/%40jlceda%2Fpro-api-types?label=pro-api-types" alt="NPM Version" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/d18m/%40jlceda%2Fpro-api-types" alt="NPM Downloads" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+## Возможности
 
-> [!NOTE]
->
-> Для получения подробной документации по разработке, пожалуйста, посетите: [https://prodocs.easyeda.com/en/api/guide/](https://prodocs.easyeda.com/en/api/guide/)
+- Определяет выбранный header-компонент или находит родительский header по выбранной площадке.
+- Извлекает короткие подписи из имен сетей и использует резервные значения вида `P1`, `P2`, если сеть отсутствует.
+- Автоматически анализирует ориентацию компонента, строки контактов и одно- или двухрядную структуру.
+- Предоставляет панель настроек для выбора шрифта, единиц, слоя, размера текста, толщины линии, стороны размещения, угла, смещения, рамки и инверсии.
+- Показывает предварительный просмотр и размещает всю группу шелкографии как один объединенный объект в текущей позиции курсора.
 
-## Войти в разработку
+## Как использовать
 
-Этот набор инструментов разработки содержит все среды и инструменты для разработки пакета расширений [EasyEDA Pro Edition](https://pro.easyeda.com/), а также имеет встроенные рекомендуемые правила для ESLint.
+1. В PCB-редакторе выберите один header-компонент или любую его площадку.
+2. Откройте верхнее меню `排针丝印 > 生成排针丝印...`.
+3. Настройте параметры на панели и проверьте превью.
+4. Переместите курсор в нужную точку на холсте PCB.
+5. Нажмите `生成到鼠標處`, чтобы создать группу шелкографии в текущем положении курсора.
 
-1. Клонируйте репозиторий проекта [pro-api-sdk](https://github.com/easyeda/pro-api-sdk) на свой локальный компьютер
+![](./images/image1.png)
 
-    ```shell
-    git clone --depth=1 https://github.com/easyeda/pro-api-sdk.git
-    ```
+![](./images/image2.png)
 
-2. Инициализация среды разработки (установка зависимостей)
+## Параметры
 
-    ```shell
-    npm install
-    ```
+- Шрифт: выбор шрифта для рендеринга текста.
+- Единицы: переключение между `mil` и `mm`.
+- Слой: автоматически по стороне компонента либо принудительно верхний / нижний слой шелкографии.
+- Размер и толщина: управляют габаритами текста и толщиной штрихов.
+- Относительное расположение и угол: задают сторону относительно header и режим поворота.
+- Смещение: определяет расстояние между подписью и корпусом header.
+- Рамка: добавляет контур вокруг всей группы надписей.
+- Инверсия: рисует текст в инвертированном стиле.
 
-3. Внесите несколько изменений...
+## Ограничения
 
-4. Компиляция пакета расширения
+- Работает только в PCB-редакторе.
+- За один запуск обрабатывается только один header.
+- Требуется доступ к данным площадок и сетей выбранного компонента.
+- Координата размещения берется из текущего положения курсора на холсте PCB, поэтому перед генерацией курсор нужно переместить в целевую точку.
 
-    ```shell
-    npm run build
-    ```
+## Разработка
 
-5. Установите пакет расширения, сгенерированный в разделе `./build/dist/` в EasyEDA Pro Edition
+Требования:
 
-## Лицензия с открытым исходным кодом
+- Node.js `>= 20.17.0`
+- Среда выполнения расширений JLCEDA / EasyEDA Pro `^3.0.0`
 
-<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+Локальная сборка:
 
-Эта группа инструментов разработки использует лицензионное соглашение с открытым исходным кодом [Apache License 2.0](https://choosealicense.com/licenses/apache-2.0/), и вы можете использовать только информацию о товарном знаке **嘉立创EDA**, **EasyEDA** для **части описания функции** и **части названия выпуска с открытым исходным кодом** пакета расширений, разработанного на основе этой группы инструментов.
+```bash
+npm install
+npm run build
+```
+
+После сборки пакет `.eext` появится в каталоге `build/dist/`. Его можно импортировать в JLCEDA / EasyEDA Pro для установки и тестирования.
+
+## Структура проекта
+
+- `src/index.ts`: точка входа расширения, регистрация меню и открытие панели.
+- `iframe/header-silk.html`: разметка панели настроек.
+- `iframe/js/header-silk.js`: анализ header, превью, обработка параметров и генерация шелкографии.
+- `iframe/css/header-silk.css`: стили панели.
+- `build/packaged.ts`: упаковка проекта в файл `.eext`.
+- `locales/`: ресурсы локализации для метаданных и подсказок.
+
+## Справка
+
+- Руководство по JLCEDA Pro API: https://prodocs.lceda.cn/cn/api/guide/
+
+## Лицензия
+
+Проект распространяется по лицензии Apache-2.0. Подробности см. в [LICENSE](./LICENSE).

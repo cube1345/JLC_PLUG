@@ -1,43 +1,76 @@
 [简体中文](./README.md) | [English](./README.en.md) | [繁體中文](#) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
-# pro-api-sdk
+# 排針絲印
 
-嘉立創EDA & EasyEDA 專業版擴展 API 開發工具
+這是一個用於嘉立創EDA / EasyEDA 專業版 PCB 編輯器的擴充功能，可依照排針焊盤上的網路名稱自動產生絲印標註。
 
-<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/stars/easyeda/pro-api-sdk" alt="GitHub Repo Stars" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk/issues" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/issues/easyeda/pro-api-sdk" alt="GitHub Issues" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/repo-size/easyeda/pro-api-sdk" alt="GitHub Repo Size" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/v/%40jlceda%2Fpro-api-types?label=pro-api-types" alt="NPM Version" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/d18m/%40jlceda%2Fpro-api-types" alt="NPM Downloads" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+## 功能概覽
 
-> [!NOTE]
->
-> 有關 嘉立創EDA專業版 擴展程式開發的更多資訊，請訪問：[https://prodocs.easyeda.com/cn/api/guide/](https://prodocs.easyeda.com/cn/api/guide/)
+- 可辨識目前選取的排針元件，或從已選取的焊盤回溯到其所屬排針。
+- 依照焊盤網路名稱自動提取較短的絲印文字；若沒有網路名稱，則退回為 `P1`、`P2` 這類腳位編號。
+- 自動分析排針方向、列分組以及單排或雙排配置。
+- 提供參數面板，可設定字型、單位、圖層、字號、粗細、相對位置、角度、偏移、外框與反相效果。
+- 可在面板中預覽大致效果，並將整組絲印以單一整體物件產生到目前滑鼠位置。
 
-## 進入開發
+## 使用方式
 
-本開發工具組包含了用於開發 [嘉立創EDA專業版](https://pro.easyeda.com/) 擴展程式的所有環境和工具，並內置了 ESLint 的推薦規則。
+1. 在 PCB 中選取一個排針元件，或選取該排針上的任一焊盤。
+2. 開啟頂部選單 `排針絲印 > 生成排針絲印...`。
+3. 在面板中調整參數並查看預覽。
+4. 將滑鼠移到 PCB 畫布上的目標位置。
+5. 點擊 `生成到鼠標處`，即可在目前滑鼠位置產生整組絲印。
 
-1. 克隆 [pro-api-sdk](https://github.com/easyeda/pro-api-sdk) 項目倉庫到本地
+![](./images/image1.png)
 
-    ```shell
-    git clone --depth=1 https://github.com/easyeda/pro-api-sdk.git
-    ```
+![](./images/image2.png)
 
-2. 初始化開發環境（安裝依賴）
+## 可設定項目
 
-    ```shell
-    npm install
-    ```
+- 字型：選擇用於絲印文字渲染的字型。
+- 數值單位：在 `mil` 與 `mm` 之間切換輸入與顯示單位。
+- 圖層：可自動跟隨元件面別，或強制輸出到頂層 / 底層絲印層。
+- 字號與粗細：控制文字整體尺寸與筆畫厚度。
+- 相對位置與角度：控制文字位於排針哪一側，以及使用自動角度或固定角度。
+- 偏移：控制文字與排針本體之間的距離。
+- 生成外框：為整組標註增加外框。
+- 反相：以反白視覺風格渲染文字。
 
-3. 進行些許變更 ...
+## 使用限制
 
-4. 編譯擴展程式
+- 僅支援在 PCB 編輯器中執行。
+- 一次只處理一個排針；若同時選取多個元件，外掛會提示重新選擇。
+- 需要能正確讀取焊盤與網路資料，否則無法產生結果。
+- 生成位置取決於目前滑鼠在 PCB 畫布上的位置，因此執行前需先將滑鼠移到目標區域。
 
-    ```shell
-    npm run build
-    ```
+## 開發與建置
 
-5. 在 嘉立創EDA專業版 中安裝生成在 `./build/dist/` 下的擴展程式
+需求：
 
-## 開源許可
+- Node.js `>= 20.17.0`
+- 嘉立創EDA / EasyEDA Pro 擴充執行環境 `^3.0.0`
 
-<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+本機建置：
 
-本開發工具組使用 [Apache License 2.0](https://choosealicense.com/licenses/apache-2.0/) 開源許可協定，你僅可以將 **嘉立创EDA**、**嘉立創EDA**、**EasyEDA** 商標資訊用於依託於本工具組開發的擴展程式的 **功能描述部分** 和 **開源發佈的標題部分**。
+```bash
+npm install
+npm run build
+```
+
+建置完成後，`build/dist/` 會產生 `.eext` 擴充套件封包，可直接匯入嘉立創EDA / EasyEDA 專業版安裝測試。
+
+## 專案結構
+
+- `src/index.ts`：擴充入口，負責註冊選單並開啟參數面板。
+- `iframe/header-silk.html`：參數面板頁面。
+- `iframe/js/header-silk.js`：排針分析、預覽、參數處理與絲印生成邏輯。
+- `iframe/css/header-silk.css`：面板樣式。
+- `build/packaged.ts`：將專案封裝為 `.eext` 擴充檔。
+- `locales/`：擴充中介資料與提示文字的多語系資源。
+
+## 參考
+
+- 嘉立創EDA Pro API 文件：https://prodocs.lceda.cn/cn/api/guide/
+
+## 授權
+
+本專案採用 Apache-2.0 授權。詳見 [LICENSE](./LICENSE)。

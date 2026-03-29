@@ -1,3 +1,6 @@
 {
-	"About...": "About..."
+	"About...": "About...",
+	"排针网络丝印": "Header Net Silk",
+	"为选中排针生成丝印": "Generate Silk For Selected Header",
+	"配置并生成排针丝印...": "Configure and Generate Header Silk..."
 }

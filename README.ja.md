@@ -1,43 +1,76 @@
 [简体中文](./README.md) | [English](./README.en.md) | [繁體中文](./README.zh-Hant.md) | [日本語](#) | [Русский](./README.ru.md)
 
-# pro-api-sdk
+# ヘッダピン用シルク生成
 
-嘉立创EDA & EasyEDA Pro Edition は API 開発ツールを拡張します
+JLCEDA / EasyEDA Pro の PCB エディタ向け拡張機能です。選択したヘッダピンの各パッドに接続されたネット名から、シルク文字を自動生成します。
 
-<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/stars/easyeda/pro-api-sdk" alt="GitHub Repo Stars" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk/issues" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/issues/easyeda/pro-api-sdk" alt="GitHub Issues" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/repo-size/easyeda/pro-api-sdk" alt="GitHub Repo Size" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/v/%40jlceda%2Fpro-api-types?label=pro-api-types" alt="NPM Version" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/d18m/%40jlceda%2Fpro-api-types" alt="NPM Downloads" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+## 主な機能
 
-> [!NOTE]
->
-> 詳細な開発ドキュメントについては、以下をご覧ください：[https://prodocs.easyeda.com/en/api/guide/](https://prodocs.easyeda.com/en/api/guide/)
+- 選択中のヘッダ部品を検出し、パッド選択時は親ヘッダまで自動でたどります。
+- ネット名から短いラベルを抽出し、ネットが無い場合は `P1`、`P2` のようなピン番号にフォールバックします。
+- ヘッダの向き、行構成、1 列 / 2 列レイアウトを自動解析します。
+- フォント、単位、レイヤー、文字サイズ、線幅、配置方向、角度、オフセット、外枠、反転表示を設定できます。
+- パネル内でプレビューを確認し、生成結果を 1 つのまとまったシルクオブジェクトとして現在のマウス位置に配置します。
 
-## 開発に入る
+## 使い方
 
-この開発ツールセットには、[EasyEDA Pro Edition](https://pro.easyeda.com/) 拡張パッケージを開発するためのすべての環境とツールが含まれており、ESLint の推奨ルールが組み込まれています。
+1. PCB エディタで 1 つのヘッダ部品、またはそのヘッダに属する任意のパッドを選択します。
+2. 上部メニューから `排针丝印 > 生成排针丝印...` を開きます。
+3. パネルで各種パラメータを調整し、プレビューを確認します。
+4. PCB キャンバス上で配置したい位置にマウスカーソルを移動します。
+5. `生成到鼠標處` をクリックすると、その位置にシルク一式が生成されます。
 
-1. プロジェクト [pro-api-sdk](https://github.com/easyeda/pro-api-sdk) リポジトリをローカル コンピューターにクローンします
+![](./images/image1.png)
 
-    ```shell
-    git clone --depth=1 https://github.com/easyeda/pro-api-sdk.git
-    ```
+![](./images/image2.png)
 
-2. 開発環境の初期化 (依存関係のインストール)
+## 設定項目
 
-    ```shell
-    npm install
-    ```
+- フォント：シルク文字の描画に使うフォントを選択します。
+- 単位：`mil` と `mm` を切り替えます。
+- レイヤー：部品面に追従する自動設定、またはトップ / ボトムシルクを固定指定できます。
+- 文字サイズと線幅：文字の大きさと太さを調整します。
+- 相対配置と角度：ヘッダのどの側に文字を置くか、回転を自動にするか固定にするかを指定します。
+- オフセット：文字とヘッダ本体の距離を調整します。
+- 外枠生成：ラベル全体を囲む外枠を追加します。
+- 反転：反転表示スタイルで文字を描画します。
 
-3. いくつかの変更を加えます...
+## 制限事項
 
-4. 拡張機能パッケージをコンパイルする
+- PCB エディタでのみ動作します。
+- 1 回に処理できるヘッダは 1 つだけです。
+- 部品からパッド情報とネット情報を取得できる必要があります。
+- 配置位置は PCB キャンバス上の現在のマウス位置を使うため、生成前にカーソルを目的位置へ移動してください。
 
-    ```shell
-    npm run build
-    ```
+## 開発
 
-5. EasyEDA Pro Edition の `./build/dist/` の下に生成された拡張パッケージをインストールします
+必要環境：
 
-## オープンソースライセンス
+- Node.js `>= 20.17.0`
+- JLCEDA / EasyEDA Pro 拡張ランタイム `^3.0.0`
 
-<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+ローカルビルド：
 
-この開発ツールグループは、[Apache License 2.0](https://choosealicense.com/licenses/apache-2.0/) オープンソースライセンス契約を使用しており、このツールグループに基づいて開発された拡張パッケージの **機能説明部分** および **オープンソースリリースタイトル部分** の **嘉立创EDA**、**EasyEDA** 商標情報のみを使用することができます。
+```bash
+npm install
+npm run build
+```
+
+ビルド後、`build/dist/` に `.eext` パッケージが生成され、JLCEDA / EasyEDA Pro にインポートしてテストできます。
+
+## プロジェクト構成
+
+- `src/index.ts`：拡張機能のエントリーポイント。メニュー登録とパネル起動を担当します。
+- `iframe/header-silk.html`：設定パネルの HTML。
+- `iframe/js/header-silk.js`：ヘッダ解析、プレビュー、パラメータ処理、シルク生成ロジック。
+- `iframe/css/header-silk.css`：パネルのスタイル。
+- `build/packaged.ts`：`.eext` パッケージを生成するスクリプト。
+- `locales/`：拡張メタデータと文言の多言語リソース。
+
+## 参考資料
+
+- JLCEDA Pro API ガイド: https://prodocs.lceda.cn/cn/api/guide/
+
+## ライセンス
+
+Apache-2.0 で公開されています。詳細は [LICENSE](./LICENSE) を参照してください。

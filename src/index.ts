@@ -21,3 +21,12 @@ export function about(): void {
 		eda.sys_I18n.text('About'),
 	);
 }
+
+export function generateSelectedHeaderSilk(): void {
+	void eda.sys_IFrame.openIFrame('/iframe/header-silk.html', 460, 760, 'header-silk-panel', {
+		title: '排针网络丝印',
+		maximizeButton: false,
+		minimizeButton: false,
+		grayscaleMask: false,
+	});
+}

@@ -1,43 +1,76 @@
 [简体中文](./README.md) | [English](#) | [繁體中文](./README.zh-Hant.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
-# pro-api-sdk
+# Header Silk
 
-JLCEDA & EasyEDA Pro Extension API Development Kit
+An extension for JLCEDA / EasyEDA Pro PCB editor that generates silkscreen labels for pin headers from the nets attached to their pads.
 
-<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/stars/easyeda/pro-api-sdk" alt="GitHub Repo Stars" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk/issues" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/issues/easyeda/pro-api-sdk" alt="GitHub Issues" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/repo-size/easyeda/pro-api-sdk" alt="GitHub Repo Size" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/v/%40jlceda%2Fpro-api-types?label=pro-api-types" alt="NPM Version" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/d18m/%40jlceda%2Fpro-api-types" alt="NPM Downloads" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+## Features
 
-> [!NOTE]
->
-> For more information on the development of EasyEDA Pro Extension, please visit: [https://prodocs.easyeda.com/en/api/guide/](https://prodocs.easyeda.com/en/api/guide/)
+- Detects the selected header component, or resolves the parent header from a selected pad.
+- Extracts compact silkscreen labels from pad net names and falls back to pin numbers such as `P1`, `P2` when no net is available.
+- Analyzes header orientation, row grouping, and single-row or dual-row layouts automatically.
+- Provides a configuration panel for font, units, layer, font size, stroke width, placement side, rotation, offset, shell outline, and inverted text.
+- Shows a preview in the panel and places the whole silkscreen set as one combined object at the current mouse position.
 
-## Enter Development
+## Workflow
 
-This development tool set contains all the environments and tools for developing the [EasyEDA Pro Edition](https://pro.easyeda.com/) extension package, and has built-in recommended rules for ESLint.
+1. In PCB editor, select one header component, or any pad that belongs to that header.
+2. Open the top menu `Header Silk > Generate Header Silk...`.
+3. Adjust parameters in the panel and check the preview.
+4. Move the mouse cursor to the target position on the PCB canvas.
+5. Click `Generate at Mouse Position` to place the generated silkscreen group.
 
-1. Clone the [pro-api-sdk](https://github.com/easyeda/pro-api-sdk) project repository to your local computer
+![](./images/image1.png)
 
-    ```shell
-    git clone --depth=1 https://github.com/easyeda/pro-api-sdk.git
-    ```
+![](./images/image2.png)
 
-2. Initializing the development environment (installing dependencies)
+## Configuration Options
 
-    ```shell
-    npm install
-    ```
+- Font: choose the font used to render the silkscreen text.
+- Units: switch numeric input and display between `mil` and `mm`.
+- Layer: follow the component side automatically, or force top or bottom silkscreen.
+- Font size and stroke width: control the overall size and thickness of the text.
+- Relative placement and rotation: define which side of the header the labels appear on and whether rotation is automatic or fixed.
+- Offset: control the distance between the labels and the header body.
+- Shell outline: add an outline around the whole generated label group.
+- Invert: render the text with an inverted visual style.
 
-3. Make your changes ...
+## Limits
 
-4. Compile the extension package
+- Works only inside the PCB editor.
+- Processes one header at a time; selecting multiple components will trigger a warning.
+- Requires readable pad and net data from the selected component.
+- Placement uses the current mouse position on the PCB canvas, so the cursor must already be over the target area before generation.
 
-    ```shell
-    npm run build
-    ```
+## Development
 
-5. Install the extension package generated under `./build/dist/` in EasyEDA Pro Edition
+Requirements:
 
-## Open-source License
+- Node.js `>= 20.17.0`
+- JLCEDA / EasyEDA Pro extension runtime `^3.0.0`
 
-<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+Build locally:
 
-This development tool uses the [Apache License 2.0](https://choosealicense.com/licenses/apache-2.0/) open source license agreement. You can only use the **嘉立创EDA** and **EasyEDA** trademark information for the **function description part** and **open source release title part** of the extension package developed based on this tool.
+```bash
+npm install
+npm run build
+```
+
+The build output is a `.eext` package under `build/dist/`, which can be imported into JLCEDA / EasyEDA Pro for installation and testing.
+
+## Project Layout
+
+- `src/index.ts`: extension entry, menu registration, and panel launch.
+- `iframe/header-silk.html`: configuration panel markup.
+- `iframe/js/header-silk.js`: header analysis, preview, parameter handling, and silkscreen generation logic.
+- `iframe/css/header-silk.css`: panel styling.
+- `build/packaged.ts`: packaging script that produces the `.eext` file.
+- `locales/`: translation resources for extension metadata and prompts.
+
+## Reference
+
+- JLCEDA Pro API guide: https://prodocs.lceda.cn/cn/api/guide/
+
+## License
+
+Released under Apache-2.0. See [LICENSE](./LICENSE).

@@ -1,51 +1,83 @@
 [简体中文](#) | [English](./README.en.md) | [繁體中文](./README.zh-Hant.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
-# pro-api-sdk
+# 排针丝印
 
-嘉立创EDA & EasyEDA 专业版扩展 API 开发工具
+面向嘉立创EDA / EasyEDA 专业版 PCB 编辑器的扩展，用于根据排针焊盘上的网络名自动生成丝印标注。
 
-<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/stars/easyeda/pro-api-sdk" alt="GitHub Repo Stars" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk/issues" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/issues/easyeda/pro-api-sdk" alt="GitHub Issues" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://github.com/easyeda/pro-api-sdk" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/repo-size/easyeda/pro-api-sdk" alt="GitHub Repo Size" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/v/%40jlceda%2Fpro-api-types?label=pro-api-types" alt="NPM Version" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>&nbsp;<a href="https://www.npmjs.com/package/@jlceda/pro-api-types" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/npm/d18m/%40jlceda%2Fpro-api-types" alt="NPM Downloads" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+## 功能概览
 
-> [!NOTE]
->
-> 详细开发文档请访问：[https://prodocs.lceda.cn/cn/api/guide/](https://prodocs.lceda.cn/cn/api/guide/)
+- 识别当前选中的排针器件，或从选中的焊盘回溯到所属排针。
+- 根据焊盘网络名自动提取较短的丝印标签；没有网络名时回退为 `P1`、`P2` 这类编号。
+- 自动分析排针方向、行列关系和单双排布局，减少手工摆放文字的工作量。
+- 提供参数面板，可配置字体、单位、图层、字号、粗细、相对排布、角度、偏移、外框和反相效果。
+- 在面板中预览大致效果，并把整组丝印作为一个整体生成到当前鼠标位置。
 
-## 进入开发
+## 使用方式
 
-本开发工具组包含了用于开发 [嘉立创EDA专业版](https://pro.lceda.cn/) 扩展包的所有环境和工具，并内置了 ESLint 的推荐规则。
+1. 在 PCB 中选中一个排针器件，或选中该排针上的任意焊盘。
+2. 打开顶栏菜单 `排针丝印 > 生成排针丝印...`。
+3. 在面板中调整参数，并查看示意预览。
+4. 将鼠标移动到 PCB 画布上的目标落点。
+5. 点击 `生成到鼠标处`，插件会在当前鼠标位置生成整组丝印。
 
-1. 克隆 [pro-api-sdk](https://github.com/easyeda/pro-api-sdk) 项目仓库到本地
+![](./images/image1.png)
 
-    Gitee:
+![](./images/image2.png)
 
-    ```shell
-    git clone --depth=1 https://gitee.com/jlceda/pro-api-sdk.git
-    ```
+## 可配置项
 
-    GitHub:
+- 字体：从编辑器可用字体中选择用于渲染丝印的字形。
+- 数值单位：在 `mil` 与 `mm` 之间切换输入和显示单位。
+- 图层：自动跟随器件层，也可以强制生成到顶层或底层丝印层。
+- 字号与粗细：控制文字整体尺寸和线条厚度。
+- 相对排布与角度：控制文字位于排针哪一侧，以及使用自动角度或固定角度。
+- 偏移：控制文字相对排针本体的距离。
+- 生成外框：为整组文字额外生成一个包络外框。
+- 反相：把文字渲染为反白效果，便于某些视觉风格的丝印表达。
 
-    ```shell
-    git clone --depth=1 https://github.com/easyeda/pro-api-sdk.git
-    ```
+## 使用限制
 
-2. 初始化开发环境（安装依赖）
+- 仅支持在 PCB 编辑器中运行。
+- 一次只处理一个排针；如果同时选中多个器件，插件会提示重新选择。
+- 依赖焊盘和网络数据；如果当前器件无法读取到有效焊盘信息，则无法生成结果。
+- 生成位置以当前鼠标在 PCB 画布中的位置为准，执行前需要先把鼠标移动到目标区域。
 
-    ```shell
-    npm install
-    ```
+## 待做
 
-3. 进行些许变更 ...
+- 做好排针丝印的增删修改
+- 加快解析排针网络并生成丝印的速度
 
-4. 编译扩展包
+## 使用说明
 
-    ```shell
-    npm run build
-    ```
+## 开发与构建
 
-5. 在 嘉立创EDA专业版 中安装生成在 `./build/dist/` 下的扩展包
+环境要求：
 
-## 开源许可
+- Node.js `>= 20.17.0`
+- 嘉立创EDA / EasyEDA Pro 扩展运行环境 `^3.0.0`
 
-<a href="https://choosealicense.com/licenses/apache-2.0/" style="vertical-align: inherit;" target="_blank"><img src="https://img.shields.io/github/license/easyeda/pro-api-sdk" alt="GitHub License" class="not-medium-zoom-image" style="display: inline; vertical-align: inherit;" /></a>
+本地构建：
 
-本开发工具组使用 [Apache License 2.0](https://choosealicense.com/licenses/apache-2.0/) 开源许可协议，你仅可以将 **嘉立创EDA**、**EasyEDA** 商标信息用于依托于本工具组开发的扩展包的 **功能描述部分** 和 **开源发布的标题部分**。
+```bash
+npm install
+npm run build
+```
+
+构建完成后，会在 `build/dist/` 下生成 `.eext` 扩展包，可直接导入嘉立创EDA / EasyEDA 专业版进行安装测试。
+
+## 项目结构
+
+- `src/index.ts`：扩展入口，负责注册菜单并打开参数面板。
+- `iframe/header-silk.html`：参数面板页面。
+- `iframe/js/header-silk.js`：排针识别、参数处理、预览和丝印生成逻辑。
+- `iframe/css/header-silk.css`：面板样式。
+- `build/packaged.ts`：将项目打包为 `.eext` 扩展文件。
+- `locales/`：扩展元数据与提示文案的多语言资源。
+
+## 参考
+
+- 嘉立创EDA Pro API 文档：https://prodocs.lceda.cn/cn/api/guide/
+
+## 许可
+
+本项目基于 Apache-2.0 协议发布。详见 [LICENSE](./LICENSE)。

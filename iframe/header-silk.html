@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-Hans">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>排针网络丝印</title>
+		<link rel="stylesheet" href="/iframe/css/header-silk.css" />
+	</head>
+	<body>
+		<div class="panel">
+			<header class="panel-header">
+				<h1>排针网络丝印</h1>
+				<p id="panel-subtitle">先选中排针，再设置参数并生成到鼠标处。</p>
+			</header>
+
+			<div class="grid config-only">
+				<label class="field">
+					<span>字体</span>
+					<select id="font-family"></select>
+				</label>
+
+				<label class="field">
+					<span>数值单位</span>
+					<select id="unit-mode">
+						<option value="mil">mil</option>
+						<option value="mm">mm</option>
+					</select>
+				</label>
+
+				<label class="field">
+					<span>图层</span>
+					<select id="layer-mode">
+						<option value="auto">自动</option>
+						<option value="top">顶层</option>
+						<option value="bottom">底层</option>
+					</select>
+				</label>
+
+				<label class="field">
+					<span>字号</span>
+					<div class="inline">
+						<input id="font-size" type="number" min="10" step="1" />
+						<em id="font-size-unit">mil</em>
+					</div>
+				</label>
+
+				<label class="field">
+					<span>粗细</span>
+					<div class="inline">
+						<input id="stroke-width" type="number" min="0" step="0.1" />
+						<em id="stroke-width-unit">mil</em>
+					</div>
+				</label>
+
+				<label class="field">
+					<span>相对排布</span>
+					<select id="position-mode">
+						<option value="auto">自动外侧</option>
+						<option value="top">上</option>
+						<option value="bottom">下</option>
+						<option value="left">左</option>
+						<option value="right">右</option>
+					</select>
+				</label>
+
+				<label class="field">
+					<span>角度</span>
+					<select id="rotation-mode">
+						<option value="auto">自动</option>
+						<option value="0">0°</option>
+						<option value="90">90°</option>
+						<option value="180">180°</option>
+						<option value="270">270°</option>
+					</select>
+				</label>
+
+				<label class="field">
+					<span>偏移</span>
+					<div class="inline">
+						<input id="offset" type="number" min="1" step="1" />
+						<em id="offset-unit">mil</em>
+					</div>
+				</label>
+			</div>
+
+			<div class="toggle-row config-only">
+				<label class="toggle">
+					<input id="include-shell" type="checkbox" />
+					<span>生成外框</span>
+				</label>
+
+				<label class="toggle">
+					<input id="invert" type="checkbox" />
+					<span>反相</span>
+				</label>
+			</div>
+
+			<section class="card preview-card config-only">
+				<div class="card-head">
+					<h2>效果示意</h2>
+					<p>仅示意大致效果。</p>
+				</div>
+				<canvas id="preview-canvas" width="380" height="220"></canvas>
+				<p id="preview-summary" class="preview-summary"></p>
+			</section>
+
+			<section class="card guide-card config-only">
+				<div class="card-head">
+					<h2>使用方法</h2>
+					<p>按下面步骤操作。</p>
+				</div>
+				<ol class="guide-list">
+					<li>先在 PCB 里选中一个排针或它的焊盘。</li>
+					<li>调整参数并查看效果。</li>
+					<li>点击“生成到鼠标处”。</li>
+					<li>丝印会直接生成到当前鼠标位置。</li>
+					<li>后续可按需要继续拖动和摆放。</li>
+				</ol>
+			</section>
+
+			<div class="actions config-only">
+				<button id="reset" class="ghost" type="button">恢复默认</button>
+				<button id="generate" class="primary" type="button">生成到鼠标处</button>
+			</div>
+
+			<p class="hint config-only">
+				先选中排针，再生成到鼠标处。
+			</p>
+		</div>
+
+		<script src="/iframe/js/header-silk.js"></script>
+	</body>
+</html>

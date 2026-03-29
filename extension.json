@@ -1,10 +1,10 @@
 {
-	"name": "pro-api-sdk",
-	"uuid": "",
-	"displayName": "PRO API SDK",
-	"description": "嘉立创EDA & EasyEDA 专业版扩展 API 开发工具",
-	"version": "1.0.0",
-	"publisher": "",
+	"name": "symbols",
+	"uuid": "2eec78240b2449dd93414d08dbb3fa4e",
+	"displayName": "排针丝印",
+	"description": "为排针一键生成丝印",
+	"version": "1.0.16",
+	"publisher": "cube",
 	"engines": {
 		"eda": "^3.0.0"
 	},
@@ -20,43 +20,22 @@
 	"images": {
 		"logo": "./images/logo.png"
 	},
-	"homepage": "",
+	"homepage": "https://github.com/cube1345/JLC_PLUG",
 	"bugs": "",
 	"activationEvents": {},
 	"entry": "./dist/index",
 	"dependentExtensions": {},
 	"headerMenus": {
-		"home": [
-			{
-				"id": "API SDK",
-				"title": "API SDK",
-				"menuItems": [
-					{
-						"id": "About",
-						"title": "About...",
-						"registerFn": "about"
-					}
-				]
-			}
-		],
-		"sch": [
-			{
-				"id": "API SDK",
-				"title": "API SDK",
-				"menuItems": [
-					{
-						"id": "About",
-						"title": "About...",
-						"registerFn": "about"
-					}
-				]
-			}
-		],
 		"pcb": [
 			{
-				"id": "API SDK",
-				"title": "API SDK",
+				"id": "Header Net Silk",
+				"title": "排针丝印",
 				"menuItems": [
+					{
+						"id": "generate_selected_header_silk_pcb",
+						"title": "生成排针丝印...",
+						"registerFn": "generateSelectedHeaderSilk"
+					},
 					{
 						"id": "About",
 						"title": "About...",
