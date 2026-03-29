@@ -28,6 +28,8 @@
 
 	const elements = {
 		panelSubtitle: document.getElementById('panel-subtitle'),
+		tabs: Array.from(document.querySelectorAll('[data-tab-target]')),
+		tabPanels: Array.from(document.querySelectorAll('[data-tab-panel]')),
 		fontFamily: document.getElementById('font-family'),
 		unitMode: document.getElementById('unit-mode'),
 		layerMode: document.getElementById('layer-mode'),
@@ -45,11 +47,6 @@
 		generate: document.getElementById('generate'),
 		previewCanvas: document.getElementById('preview-canvas'),
 		previewSummary: document.getElementById('preview-summary'),
-		placementStage: document.getElementById('placement-stage'),
-		placementMeta: document.getElementById('placement-meta'),
-		placementStatus: document.getElementById('placement-status'),
-		confirmPlacement: document.getElementById('confirm-placement'),
-		cancelPlacement: document.getElementById('cancel-placement'),
 	};
 
 	let currentSettings = loadSettings();
@@ -323,6 +320,20 @@
 
 	function saveSettings(settings) {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+	}
+
+	function activateTab(tabName) {
+		elements.tabs.forEach((tabButton) => {
+			const isActive = tabButton.dataset.tabTarget === tabName;
+			tabButton.classList.toggle('is-active', isActive);
+			tabButton.setAttribute('aria-selected', isActive ? 'true' : 'false');
+		});
+
+		elements.tabPanels.forEach((tabPanel) => {
+			const isActive = tabPanel.dataset.tabPanel === tabName;
+			tabPanel.classList.toggle('is-active', isActive);
+			tabPanel.hidden = !isActive;
+		});
 	}
 
 	function refreshUnitBadges(unitMode) {
@@ -1540,6 +1551,12 @@
 	}
 
 	function bindSettings() {
+		elements.tabs.forEach((tabButton) => {
+			tabButton.addEventListener('click', () => {
+				activateTab(tabButton.dataset.tabTarget || 'compact');
+			});
+		});
+
 		elements.fontFamily.addEventListener('change', () => {
 			currentSettings.fontFamily = elements.fontFamily.value || DEFAULT_SETTINGS.fontFamily;
 			saveSettings(currentSettings);
@@ -1614,6 +1631,7 @@
 
 	window.addEventListener('DOMContentLoaded', async () => {
 		await populateFontOptions(currentSettings);
+		activateTab('compact');
 		applySettings(currentSettings);
 		bindSettings();
 	});
