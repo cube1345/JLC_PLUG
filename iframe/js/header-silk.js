@@ -18,6 +18,7 @@
 	const MIN_AUTO_SHRINK_SCALE = 0.68;
 	const MAX_STORED_ARTIFACT_GROUPS = 80;
 	const MAX_HEADER_PARSE_CACHE = 24;
+	const MAX_HEADER_GEOMETRY_CACHE = 24;
 
 	const DEFAULT_SETTINGS = {
 		fontFamily: '黑体',
@@ -58,6 +59,7 @@
 
 	let currentSettings = loadSettings();
 	const headerParseCache = new Map();
+	const headerGeometryCache = new Map();
 
 	function asArray(value) {
 		if (Array.isArray(value)) {
@@ -351,35 +353,67 @@
 		return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 	}
 
-	function createHeaderParseCacheKey(componentId, componentLayer, componentX, componentY, componentRotation, componentPadStates) {
-		const padSignature = asArray(componentPadStates)
-			.map(item => `${normalizeText(item && item.primitiveId)}:${normalizeText(item && item.padNumber)}:${normalizeText(item && item.net)}`)
-			.join('|');
+	function createComponentStateSignature(componentId, componentLayer, componentX, componentY, componentRotation) {
 		return [
 			normalizeText(componentId),
 			String(Number(componentLayer) || 0),
 			String(Math.round((Number(componentX) || 0) * 1000) / 1000),
 			String(Math.round((Number(componentY) || 0) * 1000) / 1000),
 			String(Math.round((Number(componentRotation) || 0) * 1000) / 1000),
-			padSignature,
 		].join('::');
 	}
 
-	function rememberHeaderParseCache(cacheKey, header) {
-		if (!cacheKey || !header) {
+	function createPadStateSignature(componentPadStates, options) {
+		const includeNet = Boolean(options && options.includeNet);
+		return asArray(componentPadStates)
+			.map(item => ({
+				primitiveId: normalizeText(item && item.primitiveId),
+				padNumber: normalizeText(item && item.padNumber),
+				net: includeNet ? normalizeText(item && item.net) : '',
+			}))
+			.sort((leftPad, rightPad) => {
+				const leftKey = `${leftPad.primitiveId}:${leftPad.padNumber}`;
+				const rightKey = `${rightPad.primitiveId}:${rightPad.padNumber}`;
+				return leftKey.localeCompare(rightKey, 'en', {
+					numeric: true,
+					sensitivity: 'base',
+				});
+			})
+			.map(item => includeNet
+				? `${item.primitiveId}:${item.padNumber}:${item.net}`
+				: `${item.primitiveId}:${item.padNumber}`)
+			.join('|');
+	}
+
+	function createHeaderGeometryCacheKey(componentId, componentLayer, componentX, componentY, componentRotation, componentPadStates) {
+		return [
+			createComponentStateSignature(componentId, componentLayer, componentX, componentY, componentRotation),
+			createPadStateSignature(componentPadStates, { includeNet: false }),
+		].join('::');
+	}
+
+	function createHeaderParseCacheKey(componentId, componentLayer, componentX, componentY, componentRotation, componentPadStates) {
+		return [
+			createComponentStateSignature(componentId, componentLayer, componentX, componentY, componentRotation),
+			createPadStateSignature(componentPadStates, { includeNet: true }),
+		].join('::');
+	}
+
+	function rememberBoundedCache(cache, cacheKey, value, maxSize) {
+		if (!cacheKey || !value) {
 			return;
 		}
 
-		if (headerParseCache.has(cacheKey)) {
-			headerParseCache.delete(cacheKey);
+		if (cache.has(cacheKey)) {
+			cache.delete(cacheKey);
 		}
-		headerParseCache.set(cacheKey, header);
-		while (headerParseCache.size > MAX_HEADER_PARSE_CACHE) {
-			const oldestKey = headerParseCache.keys().next().value;
+		cache.set(cacheKey, value);
+		while (cache.size > maxSize) {
+			const oldestKey = cache.keys().next().value;
 			if (!oldestKey) {
 				break;
 			}
-			headerParseCache.delete(oldestKey);
+			cache.delete(oldestKey);
 		}
 	}
 
@@ -998,32 +1032,13 @@
 		return asArray(await eda.pcb_PrimitiveComponent.get(Array.from(componentPrimitiveIds)));
 	}
 
-	async function buildHeaderComponent(component) {
-		const componentId = String(component.getState_PrimitiveId && component.getState_PrimitiveId());
-		const designator = getComponentDisplayName(component);
-		const componentPadStates = asArray(component.getState_Pads && component.getState_Pads());
-		const componentLayer = Number(component.getState_Layer && component.getState_Layer()) || PCB_LAYER_TOP;
-		const componentX = Number(component.getState_X && component.getState_X()) || 0;
-		const componentY = Number(component.getState_Y && component.getState_Y()) || 0;
-		const componentRotation = Number(component.getState_Rotation && component.getState_Rotation()) || 0;
-		const cacheKey = createHeaderParseCacheKey(
-			componentId,
-			componentLayer,
-			componentX,
-			componentY,
-			componentRotation,
-			componentPadStates,
-		);
-		const cachedHeader = headerParseCache.get(cacheKey);
-		if (cachedHeader) {
-			return cachedHeader;
-		}
+	function getHeaderPadCacheKey(primitiveId, padNumber) {
+		const normalizedPrimitiveId = normalizeText(primitiveId);
+		const normalizedPadNumber = normalizeText(padNumber);
+		return normalizedPrimitiveId || `pad-number:${normalizedPadNumber}`;
+	}
 
-		const pads = asArray(await component.getAllPins());
-		if (pads.length < 2) {
-			return undefined;
-		}
-
+	function buildComponentPadStateMaps(componentPadStates) {
 		const componentPadStateByPrimitiveId = new Map();
 		const componentPadStateByPadNumber = new Map();
 		for (const item of componentPadStates) {
@@ -1037,9 +1052,116 @@
 				componentPadStateByPadNumber.set(padNumber, { net, primitiveId });
 			}
 		}
+		return {
+			componentPadStateByPrimitiveId,
+			componentPadStateByPadNumber,
+		};
+	}
+
+	function createHeaderFromGeometry(geometry, designator, componentPadStates) {
+		const {
+			componentPadStateByPrimitiveId,
+			componentPadStateByPadNumber,
+		} = buildComponentPadStateMaps(componentPadStates);
+		const padItems = geometry.basePads.map((basePad) => {
+			const stateByPrimitiveId = componentPadStateByPrimitiveId.get(basePad.primitiveId);
+			const stateByPadNumber = componentPadStateByPadNumber.get(basePad.padNumber);
+			const netName = normalizeText(
+				(stateByPrimitiveId && stateByPrimitiveId.net)
+				|| (stateByPadNumber && stateByPadNumber.net)
+				|| '',
+			);
+
+			return {
+				primitiveId: basePad.primitiveId,
+				padNumber: basePad.padNumber,
+				netName,
+				silkLabel: makeSilkLabel(netName, basePad.padNumber),
+				x: basePad.x,
+				y: basePad.y,
+				padShape: basePad.padShape,
+				majorProjection: basePad.majorProjection,
+				minorProjection: basePad.minorProjection,
+				rowIndex: basePad.rowIndex,
+				cachePadKey: basePad.cachePadKey,
+			};
+		});
+		const padItemByCacheKey = new Map(padItems.map((padItem) => [padItem.cachePadKey, padItem]));
+		const rows = geometry.rowDefinitions.map((rowDefinition) => ({
+			index: rowDefinition.index,
+			meanMinor: rowDefinition.meanMinor,
+			pads: rowDefinition.padKeys
+				.map((padKey) => padItemByCacheKey.get(padKey))
+				.filter(Boolean),
+		}));
+		const recognizedNetCount = padItems.filter((item) => item.netName.length > 0).length;
+
+		return {
+			componentId: geometry.componentId,
+			designator,
+			padCount: padItems.length,
+			recognizedNetCount,
+			componentLayer: geometry.componentLayer,
+			defaultTextLayer: geometry.defaultTextLayer,
+			textRotation: geometry.textRotation,
+			nominalPitch: geometry.nominalPitch,
+			padExtent: geometry.padExtent,
+			axis: geometry.axis,
+			shellBounds: geometry.shellBounds,
+			rows,
+			pads: padItems,
+		};
+	}
+
+	async function buildHeaderComponent(component) {
+		const componentId = String(component.getState_PrimitiveId && component.getState_PrimitiveId());
+		const designator = getComponentDisplayName(component);
+		const componentPadStates = asArray(component.getState_Pads && component.getState_Pads());
+		const componentLayer = Number(component.getState_Layer && component.getState_Layer()) || PCB_LAYER_TOP;
+		const componentX = Number(component.getState_X && component.getState_X()) || 0;
+		const componentY = Number(component.getState_Y && component.getState_Y()) || 0;
+		const componentRotation = Number(component.getState_Rotation && component.getState_Rotation()) || 0;
+		const geometryCacheKey = createHeaderGeometryCacheKey(
+			componentId,
+			componentLayer,
+			componentX,
+			componentY,
+			componentRotation,
+			componentPadStates,
+		);
+		const cacheKey = createHeaderParseCacheKey(
+			componentId,
+			componentLayer,
+			componentX,
+			componentY,
+			componentRotation,
+			componentPadStates,
+		);
+		const cachedHeader = headerParseCache.get(cacheKey);
+		if (cachedHeader) {
+			rememberBoundedCache(headerParseCache, cacheKey, cachedHeader, MAX_HEADER_PARSE_CACHE);
+			return cachedHeader;
+		}
+
+		const cachedGeometry = headerGeometryCache.get(geometryCacheKey);
+		if (cachedGeometry) {
+			rememberBoundedCache(headerGeometryCache, geometryCacheKey, cachedGeometry, MAX_HEADER_GEOMETRY_CACHE);
+			const header = createHeaderFromGeometry(cachedGeometry, designator, componentPadStates);
+			rememberBoundedCache(headerParseCache, cacheKey, header, MAX_HEADER_PARSE_CACHE);
+			return header;
+		}
+
+		const pads = asArray(await component.getAllPins());
+		if (pads.length < 2) {
+			return undefined;
+		}
+
+		const {
+			componentPadStateByPrimitiveId,
+		} = buildComponentPadStateMaps(componentPadStates);
 
 		const textLayer = componentLayer === PCB_LAYER_BOTTOM ? PCB_LAYER_BOTTOM_SILK : PCB_LAYER_TOP_SILK;
-		const padItems = pads.map((pad) => {
+		const basePads = pads.map((pad) => {
 			const x = Number(pad.getState_X && pad.getState_X()) || 0;
 			const y = Number(pad.getState_Y && pad.getState_Y()) || 0;
 			const primitiveId = normalizeText(pad.getState_PrimitiveId && pad.getState_PrimitiveId());
@@ -1048,19 +1170,11 @@
 				(stateByPrimitiveId && stateByPrimitiveId.padNumber)
 				|| (pad.getState_PadNumber && pad.getState_PadNumber()),
 			);
-			const stateByPadNumber = componentPadStateByPadNumber.get(padNumber);
-			const netName = normalizeText(
-				(stateByPrimitiveId && stateByPrimitiveId.net)
-				|| (stateByPadNumber && stateByPadNumber.net)
-				|| (pad.getState_Net && pad.getState_Net())
-				|| '',
-			);
 
 			return {
+				cachePadKey: getHeaderPadCacheKey(primitiveId, padNumber),
 				primitiveId,
 				padNumber,
-				netName,
-				silkLabel: makeSilkLabel(netName, padNumber),
 				x,
 				y,
 				padShape: pad.getState_Pad && pad.getState_Pad(),
@@ -1069,28 +1183,23 @@
 				rowIndex: 0,
 			};
 		});
-		const axis = getAxis(padItems.map((pad) => ({
+		const axis = getAxis(basePads.map((pad) => ({
 			x: pad.x,
 			y: pad.y,
 		})));
-		for (const padItem of padItems) {
-			padItem.majorProjection = dot({ x: padItem.x - axis.center.x, y: padItem.y - axis.center.y }, axis.major);
-			padItem.minorProjection = dot({ x: padItem.x - axis.center.x, y: padItem.y - axis.center.y }, axis.minor);
+		for (const basePad of basePads) {
+			basePad.majorProjection = dot({ x: basePad.x - axis.center.x, y: basePad.y - axis.center.y }, axis.major);
+			basePad.minorProjection = dot({ x: basePad.x - axis.center.x, y: basePad.y - axis.center.y }, axis.minor);
 		}
 
-		const padExtent = median(padItems.map((item) => getPadExtent(item.padShape)).filter((size) => size > 0));
-		const pitch = estimatePitch(padItems.map((item) => item.majorProjection));
+		const padExtent = median(basePads.map((item) => getPadExtent(item.padShape)).filter((size) => size > 0));
+		const pitch = estimatePitch(basePads.map((item) => item.majorProjection));
 		const baseSize = padExtent || pitch || 1.27;
 		const rowTolerance = Math.max(baseSize * 0.6, (pitch * 0.35) || 0);
-		const rows = clusterRows(padItems, rowTolerance || baseSize * 0.6);
-		const recognizedNetCount = padItems.filter((item) => item.netName.length > 0).length;
-		const shellBounds = estimateShellBounds(padItems, rows, pitch || baseSize, padExtent || baseSize);
-
-		const header = {
+		const rows = clusterRows(basePads, rowTolerance || baseSize * 0.6);
+		const shellBounds = estimateShellBounds(basePads, rows, pitch || baseSize, padExtent || baseSize);
+		const geometry = {
 			componentId,
-			designator,
-			padCount: padItems.length,
-			recognizedNetCount,
 			componentLayer,
 			defaultTextLayer: textLayer,
 			textRotation: getTextRotation(axis),
@@ -1098,10 +1207,26 @@
 			padExtent: padExtent || baseSize,
 			axis,
 			shellBounds,
-			rows,
-			pads: padItems,
+			basePads: basePads.map((basePad) => ({
+				cachePadKey: basePad.cachePadKey,
+				primitiveId: basePad.primitiveId,
+				padNumber: basePad.padNumber,
+				x: basePad.x,
+				y: basePad.y,
+				padShape: basePad.padShape,
+				majorProjection: basePad.majorProjection,
+				minorProjection: basePad.minorProjection,
+				rowIndex: basePad.rowIndex,
+			})),
+			rowDefinitions: rows.map((row) => ({
+				index: row.index,
+				meanMinor: row.meanMinor,
+				padKeys: row.pads.map((pad) => pad.cachePadKey),
+			})),
 		};
-		rememberHeaderParseCache(cacheKey, header);
+		rememberBoundedCache(headerGeometryCache, geometryCacheKey, geometry, MAX_HEADER_GEOMETRY_CACHE);
+		const header = createHeaderFromGeometry(geometry, designator, componentPadStates);
+		rememberBoundedCache(headerParseCache, cacheKey, header, MAX_HEADER_PARSE_CACHE);
 		return header;
 	}
 
