@@ -117,6 +117,16 @@
 					<canvas id="preview-canvas" width="320" height="164"></canvas>
 					<p id="preview-summary" class="preview-summary"></p>
 				</section>
+
+				<section class="card mapping-card compact-card">
+					<div class="card-head">
+						<h2>标签映射</h2>
+						<p>按行填写 `原标签=显示标签`。</p>
+					</div>
+					<label class="field field-full">
+						<textarea id="label-map" rows="3" placeholder="GND=G&#10;PA15=A15"></textarea>
+					</label>
+				</section>
 			</section>
 
 			<section id="tab-panel-guide" class="tab-panel config-only" data-tab-panel="guide" hidden>
@@ -128,6 +138,7 @@
 					<ol class="guide-list">
 						<li>先在 PCB 里选中一个排针或它的焊盘。</li>
 						<li>在“快速”和“布局”里调整参数。</li>
+						<li>如需缩写标签，可在“布局”的映射框中填写 `原标签=显示标签`。</li>
 						<li>点击“生成”后回到 PCB 画布框选放置范围。</li>
 						<li>点击“删除”可清掉该排针已生成的丝印。</li>
 						<li>旧版本生成的丝印若无记录，会要求再框选一次删除范围。</li>

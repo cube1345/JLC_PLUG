@@ -31,6 +31,7 @@
 		offsetMil: 18,
 		includeShell: false,
 		invert: false,
+		labelMapText: '',
 	};
 
 	const elements = {
@@ -48,6 +49,7 @@
 		rotationMode: document.getElementById('rotation-mode'),
 		offset: document.getElementById('offset'),
 		offsetUnit: document.getElementById('offset-unit'),
+		labelMap: document.getElementById('label-map'),
 		includeShell: document.getElementById('include-shell'),
 		invert: document.getElementById('invert'),
 		reset: document.getElementById('reset'),
@@ -286,6 +288,46 @@
 		const dotSegments = tail.split('.').filter(Boolean);
 		const compact = normalizeText(dotSegments.length ? dotSegments[dotSegments.length - 1] : tail);
 		return compact || normalizedNet;
+	}
+
+	function parseLabelMappings(labelMapText) {
+		const mappingText = String(labelMapText || '');
+		const mapping = new Map();
+		for (const rawLine of mappingText.split(/\r?\n+/)) {
+			const line = rawLine.trim();
+			if (!line || line.startsWith('#') || line.startsWith('//')) {
+				continue;
+			}
+
+			const segments = line.split(/\s*(=>|->|=|:)\s*/);
+			if (!segments || segments.length < 3) {
+				continue;
+			}
+
+			const source = normalizeText(segments[0]);
+			const target = normalizeText(segments.slice(2).join(''));
+			if (!source || !target) {
+				continue;
+			}
+
+			mapping.set(source.toUpperCase(), target);
+		}
+		return mapping;
+	}
+
+	function applyLabelMappingWithMap(label, mapping) {
+		const normalizedLabel = normalizeText(label);
+		if (!normalizedLabel) {
+			return normalizedLabel;
+		}
+		return mapping.get(normalizedLabel.toUpperCase()) || normalizedLabel;
+	}
+
+	function resolveDisplayLabel(netName, padNumber, settings) {
+		return applyLabelMappingWithMap(
+			makeSilkLabel(netName, padNumber),
+			parseLabelMappings(settings && settings.labelMapText),
+		);
 	}
 
 	function getComponentDisplayName(component) {
@@ -573,6 +615,7 @@
 		elements.positionMode.value = settings.positionMode;
 		elements.rotationMode.value = settings.rotationMode;
 		elements.offset.value = formatNumeric(toDisplayValue(settings.offsetMil, settings.unitMode));
+		elements.labelMap.value = settings.labelMapText || '';
 		elements.includeShell.checked = Boolean(settings.includeShell);
 		elements.invert.checked = Boolean(settings.invert);
 		refreshUnitBadges(settings.unitMode);
@@ -587,6 +630,7 @@
 		currentSettings.positionMode = elements.positionMode.value || DEFAULT_SETTINGS.positionMode;
 		currentSettings.rotationMode = elements.rotationMode.value || DEFAULT_SETTINGS.rotationMode;
 		currentSettings.offsetMil = clamp(fromDisplayValue(Number(elements.offset.value) || 0, currentSettings.unitMode), 1, 300);
+		currentSettings.labelMapText = elements.labelMap.value || '';
 		currentSettings.includeShell = elements.includeShell.checked;
 		currentSettings.invert = elements.invert.checked;
 		saveSettings(currentSettings);
@@ -791,12 +835,14 @@
 		const strokeDisplay = formatNumeric(toDisplayValue(currentSettings.strokeWidthMil, currentSettings.unitMode));
 		const offsetDisplay = formatNumeric(toDisplayValue(currentSettings.offsetMil, currentSettings.unitMode));
 		const shellText = currentSettings.includeShell ? '，含外框' : '';
+		const mappingCount = parseLabelMappings(currentSettings.labelMapText).size;
+		const mappingText = mappingCount > 0 ? `，映射 ${mappingCount} 项` : '';
 		const layerText = currentSettings.layerMode === 'top'
 			? '顶层'
 			: currentSettings.layerMode === 'bottom'
 				? '底层'
 				: '自动';
-		summary.textContent = `字号 ${fontSizeDisplay} ${currentSettings.unitMode}，粗细 ${strokeDisplay} ${currentSettings.unitMode}，偏移 ${offsetDisplay} ${currentSettings.unitMode}，${layerText}${shellText}，密集区域自动微缩。`;
+		summary.textContent = `字号 ${fontSizeDisplay} ${currentSettings.unitMode}，粗细 ${strokeDisplay} ${currentSettings.unitMode}，偏移 ${offsetDisplay} ${currentSettings.unitMode}，${layerText}${shellText}${mappingText}，密集区域自动微缩。`;
 	}
 
 	async function populateFontOptions(settings) {
@@ -1676,18 +1722,23 @@
 		const targetLayer = getTargetSilkLayer(header, settings);
 		const artifacts = [];
 		const textPlanCache = new Map();
+		const labelMappings = parseLabelMappings(settings && settings.labelMapText);
 		const offsetMil = clamp(Number(settings.offsetMil) || 18, 1, 300);
 		const rotation = getPlacementRotation(header, settings);
 		for (const row of header.rows) {
 			const direction = getPlacementDirection(header, row, settings);
 			for (let padIndex = 0; padIndex < row.pads.length; padIndex += 1) {
 				const pad = row.pads[padIndex];
-				if (!pad.silkLabel) {
+				const displayLabel = applyLabelMappingWithMap(
+					makeSilkLabel(pad.netName, pad.padNumber),
+					labelMappings,
+				);
+				if (!displayLabel) {
 					continue;
 				}
 
 				const placement = {
-					text: pad.silkLabel,
+					text: displayLabel,
 					x: pad.x + direction.x * offsetMil,
 					y: pad.y + direction.y * offsetMil,
 					rotation,
@@ -2262,6 +2313,12 @@
 
 		elements.offset.addEventListener('input', () => {
 			currentSettings.offsetMil = clamp(fromDisplayValue(Number(elements.offset.value) || 0, currentSettings.unitMode), 1, 300);
+			saveSettings(currentSettings);
+			renderPreview();
+		});
+
+		elements.labelMap.addEventListener('input', () => {
+			currentSettings.labelMapText = elements.labelMap.value || '';
 			saveSettings(currentSettings);
 			renderPreview();
 		});
