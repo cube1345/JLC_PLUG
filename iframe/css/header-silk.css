@@ -338,8 +338,11 @@ body.placement-active .panel {
 
 .label-preview-list {
 	display: flex;
-	flex-wrap: wrap;
+	flex-direction: column;
 	gap: 6px;
+	max-height: 196px;
+	overflow: auto;
+	padding-right: 2px;
 }
 
 .label-chip {
@@ -362,6 +365,65 @@ body.placement-active .panel {
 .label-chip.is-muted {
 	color: var(--muted);
 	background: rgba(255, 255, 255, 0.5);
+}
+
+.label-edit-row {
+	display: grid;
+	grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+	gap: 8px;
+	align-items: center;
+	padding: 6px 7px;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.68);
+	border: 1px solid rgba(110, 83, 53, 0.14);
+}
+
+.label-edit-row.is-manual {
+	border-color: rgba(158, 79, 29, 0.3);
+	background: rgba(255, 248, 242, 0.92);
+}
+
+.label-edit-meta {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.label-edit-meta strong {
+	font-size: 10px;
+	line-height: 1.2;
+}
+
+.label-edit-meta span {
+	font-size: 10px;
+	line-height: 1.2;
+	color: var(--muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.label-edit-input {
+	width: 100%;
+	min-width: 0;
+	border: 1px solid rgba(110, 83, 53, 0.16);
+	border-radius: 9px;
+	padding: 6px 8px;
+	font-size: 11px;
+	background: rgba(255, 255, 255, 0.86);
+	color: var(--text);
+	outline: none;
+}
+
+.label-edit-input:focus {
+	border-color: rgba(158, 79, 29, 0.48);
+	box-shadow: 0 0 0 3px rgba(158, 79, 29, 0.12);
+}
+
+.label-edit-input.is-manual {
+	border-color: rgba(158, 79, 29, 0.34);
+	background: rgba(255, 249, 244, 0.98);
 }
 
 .guide-list {

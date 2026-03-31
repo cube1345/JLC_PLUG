@@ -21,6 +21,8 @@
 	const MAX_HEADER_PARSE_CACHE = 24;
 	const MAX_HEADER_GEOMETRY_CACHE = 24;
 	const MAX_TEXT_ASSET_CACHE = 160;
+	const LABEL_PREVIEW_SELECTION_POLL_MS = 700;
+	const CREATE_BATCH_SIZE = 8;
 
 	const DEFAULT_SETTINGS = {
 		fontFamily: '黑体',
@@ -68,8 +70,11 @@
 	const headerParseCache = new Map();
 	const headerGeometryCache = new Map();
 	const textAssetCache = new Map();
+	const manualLabelOverrideCache = new Map();
 	let labelPreviewRefreshTimer = undefined;
 	let labelPreviewRequestId = 0;
+	let lastLabelPreviewSelectionSignature = '';
+	let labelPreviewSelectionWatcher = undefined;
 
 	function asArray(value) {
 		if (Array.isArray(value)) {
@@ -457,6 +462,67 @@
 		);
 	}
 
+	function getHeaderManualLabelOverrides(componentId, createIfMissing) {
+		const normalizedComponentId = normalizeText(componentId);
+		if (!normalizedComponentId) {
+			return undefined;
+		}
+		if (!manualLabelOverrideCache.has(normalizedComponentId) && createIfMissing) {
+			manualLabelOverrideCache.set(normalizedComponentId, new Map());
+		}
+		return manualLabelOverrideCache.get(normalizedComponentId);
+	}
+
+	function createHeaderPadOverrideKey(pad) {
+		return normalizeText(pad && pad.cachePadKey)
+			|| `${normalizeText(pad && pad.primitiveId)}:${normalizeText(pad && pad.padNumber)}`;
+	}
+
+	function getManualLabelOverrideByKey(componentId, padKey) {
+		const overrideMap = getHeaderManualLabelOverrides(componentId, false);
+		if (!overrideMap) {
+			return '';
+		}
+		return normalizeText(overrideMap.get(normalizeText(padKey)));
+	}
+
+	function setManualLabelOverrideByKey(componentId, padKey, nextLabel, autoLabel) {
+		const normalizedComponentId = normalizeText(componentId);
+		const normalizedPadKey = normalizeText(padKey);
+		if (!normalizedComponentId || !normalizedPadKey) {
+			return '';
+		}
+
+		const normalizedLabel = normalizeText(nextLabel);
+		const normalizedAutoLabel = normalizeText(autoLabel);
+		const overrideMap = getHeaderManualLabelOverrides(normalizedComponentId, Boolean(normalizedLabel));
+		if (!overrideMap) {
+			return '';
+		}
+
+		if (!normalizedLabel || normalizedLabel === normalizedAutoLabel) {
+			overrideMap.delete(normalizedPadKey);
+			if (!overrideMap.size) {
+				manualLabelOverrideCache.delete(normalizedComponentId);
+			}
+			return '';
+		}
+
+		overrideMap.set(normalizedPadKey, normalizedLabel);
+		return normalizedLabel;
+	}
+
+	function resolveHeaderPadDisplayLabel(header, pad, labelMappings) {
+		const autoLabel = applyLabelMappingWithMap(makeSilkLabel(pad.netName, pad.padNumber), labelMappings);
+		const manualLabel = getManualLabelOverrideByKey(header && header.componentId, createHeaderPadOverrideKey(pad));
+		return {
+			autoLabel,
+			manualLabel,
+			displayLabel: manualLabel || autoLabel,
+			hasManualOverride: Boolean(manualLabel),
+		};
+	}
+
 	function getComponentDisplayName(component) {
 		const designator = normalizeText(component.getState_Designator && component.getState_Designator());
 		if (designator) {
@@ -482,9 +548,11 @@
 				})
 				.map((pad) => ({
 					rowIndex: row.index,
+					componentId: header.componentId,
+					padKey: createHeaderPadOverrideKey(pad),
 					padNumber: pad.padNumber,
 					netName: pad.netName,
-					displayLabel: applyLabelMappingWithMap(makeSilkLabel(pad.netName, pad.padNumber), labelMappings),
+					...resolveHeaderPadDisplayLabel(header, pad, labelMappings),
 				})),
 		);
 	}
@@ -1026,6 +1094,63 @@
 		list.innerHTML = '';
 
 		for (const chip of chips) {
+			if (chip && chip.editable) {
+				const rowElement = document.createElement('label');
+				rowElement.className = chip.hasManualOverride ? 'label-edit-row is-manual' : 'label-edit-row';
+
+				const metaElement = document.createElement('div');
+				metaElement.className = 'label-edit-meta';
+				const padElement = document.createElement('strong');
+				padElement.textContent = chip.padNumber || '?';
+				const sourceElement = document.createElement('span');
+				sourceElement.textContent = chip.netName || chip.autoLabel || '未命名网络';
+				sourceElement.title = chip.netName || chip.autoLabel || '未命名网络';
+				metaElement.appendChild(padElement);
+				metaElement.appendChild(sourceElement);
+
+				const inputElement = document.createElement('input');
+				inputElement.className = chip.hasManualOverride ? 'label-edit-input is-manual' : 'label-edit-input';
+				inputElement.type = 'text';
+				inputElement.value = chip.displayLabel || '';
+				inputElement.placeholder = chip.autoLabel || chip.displayLabel || '';
+				inputElement.title = chip.autoLabel ? `默认标签：${chip.autoLabel}` : '默认标签';
+
+				const syncManualState = (restoreAutoWhenEmpty) => {
+					const normalizedInput = normalizeText(inputElement.value);
+					if (!normalizedInput) {
+						setManualLabelOverrideByKey(chip.componentId, chip.padKey, '', chip.autoLabel);
+						rowElement.className = 'label-edit-row';
+						inputElement.className = 'label-edit-input';
+						if (restoreAutoWhenEmpty) {
+							inputElement.value = chip.autoLabel || '';
+						}
+						return;
+					}
+
+					const storedLabel = setManualLabelOverrideByKey(
+						chip.componentId,
+						chip.padKey,
+						normalizedInput,
+						chip.autoLabel,
+					);
+					const isManual = Boolean(storedLabel);
+					rowElement.className = isManual ? 'label-edit-row is-manual' : 'label-edit-row';
+					inputElement.className = isManual ? 'label-edit-input is-manual' : 'label-edit-input';
+					if (!isManual) {
+						inputElement.value = chip.autoLabel || '';
+					}
+				};
+
+				inputElement.addEventListener('input', () => syncManualState(false));
+				inputElement.addEventListener('change', () => syncManualState(true));
+				inputElement.addEventListener('blur', () => syncManualState(true));
+
+				rowElement.appendChild(metaElement);
+				rowElement.appendChild(inputElement);
+				list.appendChild(rowElement);
+				continue;
+			}
+
 			const chipElement = document.createElement('span');
 			chipElement.className = chip.muted ? 'label-chip is-muted' : 'label-chip';
 			if (chip.padNumber) {
@@ -1059,19 +1184,20 @@
 			}
 
 			const labelItems = getHeaderDisplayLabelItems(header, currentSettings);
-			const visibleItems = labelItems.slice(0, 24).map((item) => ({
+			const manualOverrideCount = labelItems.filter(item => item.hasManualOverride).length;
+			const visibleItems = labelItems.map((item) => ({
+				editable: true,
+				componentId: item.componentId,
+				padKey: item.padKey,
 				padNumber: item.padNumber,
-				text: item.displayLabel || item.netName || `P${item.padNumber || '?'}`,
+				netName: item.netName,
+				autoLabel: item.autoLabel || item.netName || `P${item.padNumber || '?'}`,
+				displayLabel: item.displayLabel || item.netName || `P${item.padNumber || '?'}`,
+				hasManualOverride: item.hasManualOverride,
 			}));
-			if (labelItems.length > visibleItems.length) {
-				visibleItems.push({
-					text: `+${labelItems.length - visibleItems.length}`,
-					muted: true,
-				});
-			}
 
 			renderLabelPreviewState(
-				`${header.designator} · ${header.padCount} Pin · ${header.rows.length} 行 · ${getHeaderPadPreview(header, currentSettings, 6)}`,
+				`${header.designator} · ${header.padCount} Pin · ${header.rows.length} 行 · 手改 ${manualOverrideCount} 项`,
 				visibleItems,
 				{ emptyText: '没有可显示的标签' },
 			);
@@ -1093,6 +1219,52 @@
 			labelPreviewRefreshTimer = undefined;
 			void refreshLabelPreview();
 		}, delayMs == null ? 180 : delayMs);
+	}
+
+	async function getSelectedComponentSignature() {
+		if (!eda.pcb_SelectControl) {
+			return '';
+		}
+
+		const selectedPrimitives = asArray(await eda.pcb_SelectControl.getAllSelectedPrimitives());
+		const componentIds = new Set();
+		for (const primitive of selectedPrimitives) {
+			const primitiveType = String(primitive.getState_PrimitiveType && primitive.getState_PrimitiveType());
+			if (primitiveType === 'Component') {
+				componentIds.add(normalizeText(primitive.getState_PrimitiveId && primitive.getState_PrimitiveId()));
+				continue;
+			}
+			if (primitiveType === 'ComponentPad') {
+				componentIds.add(normalizeText(primitive.getState_ParentComponentPrimitiveId && primitive.getState_ParentComponentPrimitiveId()));
+			}
+		}
+		return [...componentIds].filter(Boolean).sort().join('|');
+	}
+
+	function startLabelPreviewSelectionWatcher() {
+		if (labelPreviewSelectionWatcher) {
+			clearInterval(labelPreviewSelectionWatcher);
+		}
+
+		let pollInFlight = false;
+		labelPreviewSelectionWatcher = setInterval(async () => {
+			if (pollInFlight) {
+				return;
+			}
+			pollInFlight = true;
+			try {
+				const selectionSignature = await getSelectedComponentSignature();
+				if (selectionSignature === lastLabelPreviewSelectionSignature) {
+					return;
+				}
+				lastLabelPreviewSelectionSignature = selectionSignature;
+				scheduleLabelPreviewRefresh(0);
+			}
+			catch {}
+			finally {
+				pollInFlight = false;
+			}
+		}, LABEL_PREVIEW_SELECTION_POLL_MS);
 	}
 
 	async function populateFontOptions(settings) {
@@ -1977,10 +2149,7 @@
 			const direction = getPlacementDirection(header, row, settings);
 			for (let padIndex = 0; padIndex < row.pads.length; padIndex += 1) {
 				const pad = row.pads[padIndex];
-				const displayLabel = applyLabelMappingWithMap(
-					makeSilkLabel(pad.netName, pad.padNumber),
-					labelMappings,
-				);
+				const displayLabel = resolveHeaderPadDisplayLabel(header, pad, labelMappings).displayLabel;
 				if (!displayLabel) {
 					continue;
 				}
@@ -2333,39 +2502,46 @@
 		return deletedCount;
 	}
 
-	async function createFinalGroup(layer, items, primitiveLock) {
-		const handles = [];
-		for (const item of items) {
-			if (item.type === 'image') {
-				const createdImage = await eda.pcb_PrimitiveImage.create(
-					item.topLeftX,
-					item.topLeftY,
-					item.complexPolygon,
-					layer,
-					item.imageWidth,
-					item.imageHeight,
-					item.rotation,
-					item.horizonMirror,
-					Boolean(primitiveLock),
-				);
-				if (createdImage) {
-					handles.push({ type: 'image', primitive: createdImage });
-				}
-				continue;
-			}
-
-			const createdLine = await eda.pcb_PrimitiveLine.create(
-				'',
+	async function createFinalHandle(layer, item, primitiveLock) {
+		if (item.type === 'image') {
+			const createdImage = await eda.pcb_PrimitiveImage.create(
+				item.topLeftX,
+				item.topLeftY,
+				item.complexPolygon,
 				layer,
-				item.startX,
-				item.startY,
-				item.endX,
-				item.endY,
-				item.lineWidth,
+				item.imageWidth,
+				item.imageHeight,
+				item.rotation,
+				item.horizonMirror,
 				Boolean(primitiveLock),
 			);
-			if (createdLine) {
-				handles.push({ type: 'line', primitive: createdLine });
+			return createdImage ? { type: 'image', primitive: createdImage } : undefined;
+		}
+
+		const createdLine = await eda.pcb_PrimitiveLine.create(
+			'',
+			layer,
+			item.startX,
+			item.startY,
+			item.endX,
+			item.endY,
+			item.lineWidth,
+			Boolean(primitiveLock),
+		);
+		return createdLine ? { type: 'line', primitive: createdLine } : undefined;
+	}
+
+	async function createFinalGroup(layer, items, primitiveLock) {
+		const handles = [];
+		for (let index = 0; index < items.length; index += CREATE_BATCH_SIZE) {
+			const batchItems = items.slice(index, index + CREATE_BATCH_SIZE);
+			const batchHandles = await Promise.all(
+				batchItems.map(item => createFinalHandle(layer, item, primitiveLock)),
+			);
+			for (const handle of batchHandles) {
+				if (handle) {
+					handles.push(handle);
+				}
 			}
 		}
 		return handles;
@@ -2655,6 +2831,7 @@
 		activateTab('compact');
 		applySettings(currentSettings);
 		bindSettings();
+		startLabelPreviewSelectionWatcher();
 		scheduleLabelPreviewRefresh(0);
 	});
 })();
