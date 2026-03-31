@@ -1,6 +1,7 @@
 (function () {
 	const STORAGE_KEY = 'header_silk_settings_v2';
 	const ARTIFACT_STORAGE_KEY = 'header_silk_artifacts_v1';
+	const MANUAL_LABEL_OVERRIDE_STORAGE_KEY = 'header_silk_manual_labels_v1';
 	const PANEL_ID = 'header-silk-panel';
 	const PCB_LAYER_TOP = 1;
 	const PCB_LAYER_BOTTOM = 2;
@@ -21,6 +22,7 @@
 	const MAX_HEADER_PARSE_CACHE = 24;
 	const MAX_HEADER_GEOMETRY_CACHE = 24;
 	const MAX_TEXT_ASSET_CACHE = 160;
+	const MAX_STORED_LABEL_OVERRIDE_COMPONENTS = 120;
 	const LABEL_PREVIEW_SELECTION_POLL_MS = 700;
 	const CREATE_BATCH_SIZE = 8;
 
@@ -62,6 +64,7 @@
 		previewCanvas: document.getElementById('preview-canvas'),
 		previewSummary: document.getElementById('preview-summary'),
 		refreshLabelPreview: document.getElementById('refresh-label-preview'),
+		clearLabelOverrides: document.getElementById('clear-label-overrides'),
 		labelPreviewMeta: document.getElementById('label-preview-meta'),
 		labelPreviewList: document.getElementById('label-preview-list'),
 	};
@@ -70,7 +73,7 @@
 	const headerParseCache = new Map();
 	const headerGeometryCache = new Map();
 	const textAssetCache = new Map();
-	const manualLabelOverrideCache = new Map();
+	const manualLabelOverrideCache = loadManualLabelOverrideCache();
 	let labelPreviewRefreshTimer = undefined;
 	let labelPreviewRequestId = 0;
 	let lastLabelPreviewSelectionSignature = '';
@@ -468,9 +471,15 @@
 			return undefined;
 		}
 		if (!manualLabelOverrideCache.has(normalizedComponentId) && createIfMissing) {
-			manualLabelOverrideCache.set(normalizedComponentId, new Map());
+			touchMapEntry(manualLabelOverrideCache, normalizedComponentId, new Map());
+			trimMapSize(manualLabelOverrideCache, MAX_STORED_LABEL_OVERRIDE_COMPONENTS, normalizedComponentId);
+			saveManualLabelOverrideCache(manualLabelOverrideCache);
 		}
-		return manualLabelOverrideCache.get(normalizedComponentId);
+		const overrideMap = manualLabelOverrideCache.get(normalizedComponentId);
+		if (overrideMap) {
+			touchMapEntry(manualLabelOverrideCache, normalizedComponentId, overrideMap);
+		}
+		return overrideMap;
 	}
 
 	function createHeaderPadOverrideKey(pad) {
@@ -505,11 +514,25 @@
 			if (!overrideMap.size) {
 				manualLabelOverrideCache.delete(normalizedComponentId);
 			}
+			saveManualLabelOverrideCache(manualLabelOverrideCache);
 			return '';
 		}
 
 		overrideMap.set(normalizedPadKey, normalizedLabel);
+		touchMapEntry(manualLabelOverrideCache, normalizedComponentId, overrideMap);
+		trimMapSize(manualLabelOverrideCache, MAX_STORED_LABEL_OVERRIDE_COMPONENTS, normalizedComponentId);
+		saveManualLabelOverrideCache(manualLabelOverrideCache);
 		return normalizedLabel;
+	}
+
+	function clearManualLabelOverrides(componentId) {
+		const normalizedComponentId = normalizeText(componentId);
+		if (!normalizedComponentId || !manualLabelOverrideCache.has(normalizedComponentId)) {
+			return false;
+		}
+		manualLabelOverrideCache.delete(normalizedComponentId);
+		saveManualLabelOverrideCache(manualLabelOverrideCache);
+		return true;
 	}
 
 	function resolveHeaderPadDisplayLabel(header, pad, labelMappings) {
@@ -606,6 +629,53 @@
 		localStorage.setItem(
 			ARTIFACT_STORAGE_KEY,
 			JSON.stringify((Array.isArray(groups) ? groups : []).slice(-MAX_STORED_ARTIFACT_GROUPS)),
+		);
+	}
+
+	function loadManualLabelOverrideCache() {
+		try {
+			const saved = JSON.parse(localStorage.getItem(MANUAL_LABEL_OVERRIDE_STORAGE_KEY) || '[]');
+			const cache = new Map();
+			for (const entry of asArray(saved)) {
+				const componentId = normalizeText(entry && entry.componentId);
+				if (!componentId) {
+					continue;
+				}
+				const labels = new Map();
+				for (const item of asArray(entry && entry.labels)) {
+					const padKey = normalizeText(item && item.padKey);
+					const label = normalizeText(item && item.label);
+					if (!padKey || !label) {
+						continue;
+					}
+					labels.set(padKey, label);
+				}
+				if (labels.size) {
+					cache.set(componentId, labels);
+				}
+			}
+			trimMapSize(cache, MAX_STORED_LABEL_OVERRIDE_COMPONENTS);
+			return cache;
+		}
+		catch {
+			return new Map();
+		}
+	}
+
+	function saveManualLabelOverrideCache(cache) {
+		const serialized = [];
+		for (const [componentId, labels] of cache.entries()) {
+			if (!componentId || !(labels instanceof Map) || !labels.size) {
+				continue;
+			}
+			serialized.push({
+				componentId,
+				labels: [...labels.entries()].map(([padKey, label]) => ({ padKey, label })),
+			});
+		}
+		localStorage.setItem(
+			MANUAL_LABEL_OVERRIDE_STORAGE_KEY,
+			JSON.stringify(serialized.slice(-MAX_STORED_LABEL_OVERRIDE_COMPONENTS)),
 		);
 	}
 
@@ -1197,7 +1267,7 @@
 			}));
 
 			renderLabelPreviewState(
-				`${header.designator} · ${header.padCount} Pin · ${header.rows.length} 行 · 手改 ${manualOverrideCount} 项`,
+				`${header.designator} · ${header.padCount} Pin · ${header.rows.length} 行 · 手改 ${manualOverrideCount} 项（自动保存）`,
 				visibleItems,
 				{ emptyText: '没有可显示的标签' },
 			);
@@ -2815,6 +2885,22 @@
 		elements.refreshLabelPreview.addEventListener('click', () => {
 			syncSettingsFromForm();
 			void refreshLabelPreview();
+		});
+
+		elements.clearLabelOverrides.addEventListener('click', async () => {
+			try {
+				const header = await resolveSelectedHeader();
+				if (!clearManualLabelOverrides(header.componentId)) {
+					eda.sys_Message.showToastMessage('当前排针没有已保存的手改标签。', ESYS_ToastMessageType.WARNING, 3);
+					return;
+				}
+				await refreshLabelPreview();
+				eda.sys_Message.showToastMessage('已清空当前排针的手改标签。', ESYS_ToastMessageType.SUCCESS, 2);
+			}
+			catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				eda.sys_Message.showToastMessage(message, ESYS_ToastMessageType.ERROR, 4);
+			}
 		});
 
 		elements.deleteGenerated.addEventListener('click', () => {

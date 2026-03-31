@@ -336,6 +336,14 @@ body.placement-active .panel {
 	flex: 0 0 auto;
 }
 
+.mini-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
 .label-preview-list {
 	display: flex;
 	flex-direction: column;

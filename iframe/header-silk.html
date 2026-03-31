@@ -132,9 +132,12 @@
 					<div class="card-head card-head-inline">
 						<div>
 							<h2>标签修正</h2>
-							<p id="label-preview-meta">选择排针后会自动列出每个焊盘标签，可直接手改。</p>
+							<p id="label-preview-meta">选择排针后会自动列出每个焊盘标签，可直接手改并自动保存。</p>
 						</div>
-						<button id="refresh-label-preview" class="mini-action" type="button">刷新</button>
+						<div class="mini-actions">
+							<button id="refresh-label-preview" class="mini-action" type="button">刷新</button>
+							<button id="clear-label-overrides" class="mini-action" type="button">清空手改</button>
+						</div>
 					</div>
 					<div id="label-preview-list" class="label-preview-list">
 						<span class="label-chip is-muted">等待读取</span>
@@ -151,7 +154,7 @@
 					<ol class="guide-list">
 						<li>先在 PCB 里选中一个排针或它的焊盘。</li>
 						<li>在“快速”和“布局”里调整参数。</li>
-						<li>如需缩写标签，可在“布局”的映射框中填写 `原标签=显示标签`，也可直接在“标签修正”里逐项手改。</li>
+						<li>如需缩写标签，可在“布局”的映射框中填写 `原标签=显示标签`，也可直接在“标签修正”里逐项手改，修改会自动保存。</li>
 						<li>点击“生成”后回到 PCB 画布框选放置范围。</li>
 						<li>点击“删除”可清掉该排针已生成的丝印。</li>
 						<li>旧版本生成的丝印若无记录，会要求再框选一次删除范围。</li>
