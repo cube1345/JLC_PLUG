@@ -1,3 +1,11 @@
+# V2.2.2
+
+## 变更
+
+1. 将原本单文件的 `iframe/js/header-silk.js` 拆分为 `shared`、`rendering`、`header`、`workflow`、`panel` 多个模块，降低单文件维护压力
+2. 保留原有 iframe 入口路径，改为模块化加载新结构，减少后续继续拆分或新增功能时的耦合
+3. 对拆分后的 iframe 模块执行静态打包校验，确保 import / export 关系可正常解析
+
 # V2.2.1
 
 ## 变更

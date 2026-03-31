@@ -13,7 +13,6 @@
 					<p class="eyebrow">Silkprint v2</p>
 					<h1>丝印一键生成</h1>
 				</div>
-				<p id="panel-subtitle">先选中排针，再设置参数并生成或删除丝印。</p>
 			</header>
 
 			<div class="tab-strip config-only" role="tablist" aria-label="丝印一键生成设置分组">
@@ -121,7 +120,6 @@
 				<section class="card mapping-card compact-card">
 					<div class="card-head">
 						<h2>标签映射</h2>
-						<p>支持精确、通配符和正则规则。</p>
 					</div>
 					<label class="field field-full">
 						<textarea id="label-map" rows="3" placeholder="GND=G&#10;PA*=A$1&#10;/^PB(\d+)$/=B$1"></textarea>
@@ -132,7 +130,6 @@
 					<div class="card-head card-head-inline">
 						<div>
 							<h2>标签修正</h2>
-							<p id="label-preview-meta">选择排针后会自动列出每个焊盘标签，可直接手改并自动保存。</p>
 						</div>
 						<div class="mini-actions">
 							<button id="refresh-label-preview" class="mini-action" type="button">刷新</button>
@@ -168,11 +165,8 @@
 				<button id="generate" class="primary" type="button">生成</button>
 			</div>
 
-			<p class="hint config-only">
-				先选中排针，再生成或删除已生成丝印。
-			</p>
 		</div>
 
-		<script src="/iframe/js/header-silk.js"></script>
+		<script type="module" src="/iframe/js/header-silk.js"></script>
 	</body>
 </html>
