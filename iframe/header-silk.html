@@ -121,10 +121,10 @@
 				<section class="card mapping-card compact-card">
 					<div class="card-head">
 						<h2>标签映射</h2>
-						<p>按行填写 `原标签=显示标签`。</p>
+						<p>支持精确、通配符和正则规则。</p>
 					</div>
 					<label class="field field-full">
-						<textarea id="label-map" rows="3" placeholder="GND=G&#10;PA15=A15"></textarea>
+						<textarea id="label-map" rows="3" placeholder="GND=G&#10;PA*=A$1&#10;/^PB(\d+)$/=B$1"></textarea>
 					</label>
 				</section>
 			</section>

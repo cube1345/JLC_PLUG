@@ -290,9 +290,77 @@
 		return compact || normalizedNet;
 	}
 
+	function escapeRegExp(text) {
+		return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	}
+
+	function wildcardToRegExpSource(pattern) {
+		let source = '';
+		for (const character of String(pattern || '')) {
+			if (character === '*') {
+				source += '(.*)';
+				continue;
+			}
+			if (character === '?') {
+				source += '(.)';
+				continue;
+			}
+			source += escapeRegExp(character);
+		}
+		return source;
+	}
+
+	function sanitizeRegexFlags(flags) {
+		const normalizedFlags = String(flags || '').replace(/[gy]/g, '');
+		return [...new Set(normalizedFlags.split(''))].join('');
+	}
+
+	function buildPatternMappingRule(source, target) {
+		const normalizedSource = normalizeText(source);
+		if (!normalizedSource) {
+			return undefined;
+		}
+
+		const regexLiteralMatch = normalizedSource.match(/^\/(.+)\/([dgimsuvy]*)$/);
+		if (regexLiteralMatch) {
+			try {
+				return {
+					regex: new RegExp(regexLiteralMatch[1], sanitizeRegexFlags(regexLiteralMatch[2])),
+					target,
+				};
+			}
+			catch {
+				return undefined;
+			}
+		}
+
+		if (normalizedSource.startsWith('re:')) {
+			try {
+				return {
+					regex: new RegExp(`^(?:${normalizedSource.slice(3).trim()})$`, 'i'),
+					target,
+				};
+			}
+			catch {
+				return undefined;
+			}
+		}
+
+		if (normalizedSource.includes('*') || normalizedSource.includes('?')) {
+			return {
+				regex: new RegExp(`^${wildcardToRegExpSource(normalizedSource)}$`, 'i'),
+				target,
+			};
+		}
+
+		return undefined;
+	}
+
 	function parseLabelMappings(labelMapText) {
 		const mappingText = String(labelMapText || '');
-		const mapping = new Map();
+		const exactRules = new Map();
+		const patternRules = [];
+		let size = 0;
 		for (const rawLine of mappingText.split(/\r?\n+/)) {
 			const line = rawLine.trim();
 			if (!line || line.startsWith('#') || line.startsWith('//')) {
@@ -310,9 +378,21 @@
 				continue;
 			}
 
-			mapping.set(source.toUpperCase(), target);
+			const patternRule = buildPatternMappingRule(source, target);
+			if (patternRule) {
+				patternRules.push(patternRule);
+				size += 1;
+				continue;
+			}
+
+			exactRules.set(source.toUpperCase(), target);
+			size += 1;
 		}
-		return mapping;
+		return {
+			exactRules,
+			patternRules,
+			size,
+		};
 	}
 
 	function applyLabelMappingWithMap(label, mapping) {
@@ -320,7 +400,23 @@
 		if (!normalizedLabel) {
 			return normalizedLabel;
 		}
-		return mapping.get(normalizedLabel.toUpperCase()) || normalizedLabel;
+
+		const normalizedUpperCaseLabel = normalizedLabel.toUpperCase();
+		if (mapping.exactRules.has(normalizedUpperCaseLabel)) {
+			return mapping.exactRules.get(normalizedUpperCaseLabel) || normalizedLabel;
+		}
+
+		for (const rule of mapping.patternRules) {
+			rule.regex.lastIndex = 0;
+			if (!rule.regex.test(normalizedLabel)) {
+				continue;
+			}
+			rule.regex.lastIndex = 0;
+			const replacedLabel = normalizedLabel.replace(rule.regex, rule.target);
+			return normalizeText(replacedLabel) || normalizedLabel;
+		}
+
+		return normalizedLabel;
 	}
 
 	function resolveDisplayLabel(netName, padNumber, settings) {
@@ -734,7 +830,8 @@
 		const height = canvas.height;
 		const centerX = width / 2;
 		const centerY = height / 2;
-		const labels = ['3V3', 'SCL', 'TX', 'RX', 'GND'];
+		const labelMappings = parseLabelMappings(currentSettings.labelMapText);
+		const labels = ['3V3', 'SCL', 'TX', 'RX', 'GND'].map(label => applyLabelMappingWithMap(label, labelMappings));
 		const orientation = currentSettings.positionMode === 'left' || currentSettings.positionMode === 'right'
 			? 'vertical'
 			: 'horizontal';
@@ -835,7 +932,7 @@
 		const strokeDisplay = formatNumeric(toDisplayValue(currentSettings.strokeWidthMil, currentSettings.unitMode));
 		const offsetDisplay = formatNumeric(toDisplayValue(currentSettings.offsetMil, currentSettings.unitMode));
 		const shellText = currentSettings.includeShell ? '，含外框' : '';
-		const mappingCount = parseLabelMappings(currentSettings.labelMapText).size;
+		const mappingCount = labelMappings.size;
 		const mappingText = mappingCount > 0 ? `，映射 ${mappingCount} 项` : '';
 		const layerText = currentSettings.layerMode === 'top'
 			? '顶层'
