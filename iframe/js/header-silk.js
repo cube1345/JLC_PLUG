@@ -20,6 +20,7 @@
 	const MAX_STORED_ARTIFACT_GROUPS = 80;
 	const MAX_HEADER_PARSE_CACHE = 24;
 	const MAX_HEADER_GEOMETRY_CACHE = 24;
+	const MAX_TEXT_ASSET_CACHE = 160;
 
 	const DEFAULT_SETTINGS = {
 		fontFamily: '黑体',
@@ -66,6 +67,7 @@
 	let currentSettings = loadSettings();
 	const headerParseCache = new Map();
 	const headerGeometryCache = new Map();
+	const textAssetCache = new Map();
 	let labelPreviewRefreshTimer = undefined;
 	let labelPreviewRequestId = 0;
 
@@ -95,6 +97,29 @@
 	function formatNumeric(value) {
 		const rounded = Math.round(value * 1000) / 1000;
 		return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+	}
+
+	function touchMapEntry(map, key, value) {
+		if (map.has(key)) {
+			map.delete(key);
+		}
+		map.set(key, value);
+	}
+
+	function trimMapSize(map, maxSize, protectedKey) {
+		while (map.size > maxSize) {
+			const oldestKey = map.keys().next().value;
+			if (oldestKey == null) {
+				return;
+			}
+			if (oldestKey === protectedKey && map.size > 1) {
+				const protectedValue = map.get(oldestKey);
+				map.delete(oldestKey);
+				map.set(oldestKey, protectedValue);
+				continue;
+			}
+			map.delete(oldestKey);
+		}
 	}
 
 	function toDisplayValue(valueMil, unitMode) {
@@ -2027,19 +2052,57 @@
 		return complexPolygon;
 	}
 
-	async function hydratePlacedItemsWithAssets(items, settings) {
+	function createTextAssetCacheKey(text, settings) {
+		const textSettings = getTextRenderSettings(settings);
+		const fontFamily = normalizeText(settings && settings.fontFamily) || DEFAULT_SETTINGS.fontFamily;
+		return [
+			text,
+			fontFamily,
+			textSettings.fontSizeMil.toFixed(3),
+			textSettings.strokeWidthMil.toFixed(3),
+			settings && settings.invert ? 'invert' : 'normal',
+		].join('|');
+	}
+
+	async function getOrPrepareTextComplexPolygon(text, settings) {
+		const cacheKey = createTextAssetCacheKey(text, settings);
+		const cachedEntry = textAssetCache.get(cacheKey);
+		if (cachedEntry) {
+			touchMapEntry(textAssetCache, cacheKey, cachedEntry);
+			return cachedEntry;
+		}
+
+		const pendingEntry = prepareTextComplexPolygon(text, settings)
+			.then((complexPolygon) => {
+				touchMapEntry(textAssetCache, cacheKey, Promise.resolve(complexPolygon));
+				trimMapSize(textAssetCache, MAX_TEXT_ASSET_CACHE, cacheKey);
+				return complexPolygon;
+			})
+			.catch((error) => {
+				textAssetCache.delete(cacheKey);
+				throw error;
+			});
+
+		touchMapEntry(textAssetCache, cacheKey, pendingEntry);
+		trimMapSize(textAssetCache, MAX_TEXT_ASSET_CACHE, cacheKey);
+		return pendingEntry;
+	}
+
+	async function prepareTextAssetMap(items, settings) {
 		const imageItems = items.filter(item => item.type === 'image');
 		if (!imageItems.length) {
-			return items;
+			return new Map();
 		}
 
 		const uniqueTexts = [...new Set(imageItems.map(item => item.text).filter(Boolean))];
 		const assetEntries = await Promise.all(uniqueTexts.map(async (text) => {
-			const complexPolygon = await prepareTextComplexPolygon(text, settings);
+			const complexPolygon = await getOrPrepareTextComplexPolygon(text, settings);
 			return [text, complexPolygon];
 		}));
-		const assetMap = new Map(assetEntries);
+		return new Map(assetEntries);
+	}
 
+	function hydratePlacedItemsWithAssetMap(items, assetMap) {
 		return items.map((item) => {
 			if (item.type !== 'image') {
 				return item;
@@ -2122,13 +2185,16 @@
 	}
 
 	async function createCombinedSilkAtMouse(artifacts, settings) {
+		// 在用户框选范围时并行预热文字多边形，尽量把等待隐藏掉。
+		const assetMapPromise = prepareTextAssetMap(artifacts.items, settings);
 		const selection = await waitForRangeSelection({
 			followMouseTip: '请在 PCB 画布上框选生成范围。',
 			toastMessage: '请在 PCB 中框选生成范围。',
 			tooSmallMessage: '请拖动框选一个范围，不要单击。',
 		});
 		const translatedItems = layoutArtifactsFromRange(artifacts, selection.startPoint, selection.endPoint, settings);
-		const finalItems = await hydratePlacedItemsWithAssets(translatedItems, settings);
+		const assetMap = await assetMapPromise;
+		const finalItems = hydratePlacedItemsWithAssetMap(translatedItems, assetMap);
 		const autoAdjustedCount = finalItems.filter(item => item.type === 'image' && Number(item.autoScale) < 0.999).length;
 		const finalHandles = await createFinalGroup(artifacts.layer, finalItems, false);
 		if (!finalHandles.length) {
