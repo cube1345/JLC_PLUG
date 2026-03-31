@@ -11,6 +11,7 @@ import {
 	getHeaderDisplayLabelItems,
 	normalizeText,
 	saveSettings,
+	setManualLabelOverrideByKey,
 	toDisplayValue,
 } from './shared.js';
 import { renderPreview } from './rendering.js';

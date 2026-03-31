@@ -1,6 +1,6 @@
 {
 	"name": "symbols",
-	"version": "2.2.3",
+	"version": "2.2.4",
 	"description": "根据排针排母网络一键生成/管理丝印",
 	"author": "marcus",
 	"license": "Apache-2.0",
@@ -10,9 +10,10 @@
 	},
 	"scripts": {
 		"compile": "rimraf ./dist/ && ts-node ./config/esbuild.prod.ts",
+		"build:iframe": "ts-node ./scripts/build-iframe.ts",
 		"lint": "eslint",
 		"fix": "eslint --fix",
-		"build": "npm run compile && ts-node ./build/packaged.ts"
+		"build": "npm run compile && npm run build:iframe && ts-node ./build/packaged.ts"
 	},
 	"devDependencies": {
 		"@antfu/eslint-config": "^5.4.1",

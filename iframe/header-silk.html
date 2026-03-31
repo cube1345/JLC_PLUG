@@ -48,7 +48,7 @@
 					<label class="field">
 						<span>字号</span>
 						<div class="inline">
-							<input id="font-size" type="number" min="10" step="1" />
+							<input id="font-size" type="number" min="10" step="1" value="40" />
 							<em id="font-size-unit">mil</em>
 						</div>
 					</label>
@@ -56,7 +56,7 @@
 					<label class="field">
 						<span>粗细</span>
 						<div class="inline">
-							<input id="stroke-width" type="number" min="0" step="0.1" />
+							<input id="stroke-width" type="number" min="0" step="0.1" value="4" />
 							<em id="stroke-width-unit">mil</em>
 						</div>
 					</label>
@@ -64,7 +64,7 @@
 					<label class="field">
 						<span>偏移</span>
 						<div class="inline">
-							<input id="offset" type="number" min="1" step="1" />
+							<input id="offset" type="number" min="1" step="1" value="18" />
 							<em id="offset-unit">mil</em>
 						</div>
 					</label>
@@ -130,6 +130,7 @@
 					<div class="card-head card-head-inline">
 						<div>
 							<h2>标签修正</h2>
+							<p id="label-preview-meta">等待读取当前排针</p>
 						</div>
 						<div class="mini-actions">
 							<button id="refresh-label-preview" class="mini-action" type="button">刷新</button>
@@ -167,6 +168,6 @@
 
 		</div>
 
-		<script type="module" src="/iframe/js/header-silk.js"></script>
+		<script src="/iframe/js/header-silk.js"></script>
 	</body>
 </html>
