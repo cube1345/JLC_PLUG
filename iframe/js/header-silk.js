@@ -7,15 +7,16 @@
 	const PCB_LAYER_TOP_SILK = 3;
 	const PCB_LAYER_BOTTOM_SILK = 4;
 	const TEXT_RENDER_FONT_PX = 192;
+	const TEXT_RENDER_FONT_WEIGHT = 400;
 	const TEXT_RENDER_PADDING_X_PX = 12;
 	const TEXT_RENDER_PADDING_Y_PX = 10;
-	const TEXT_RENDER_MARGIN_X_MIL = 6;
-	const TEXT_RENDER_MARGIN_Y_MIL = 8;
 	const RANGE_SELECTION_EVENT_ID = 'header-silk-range-select';
 	const MIN_RANGE_SELECTION_DISTANCE = 5;
 	const AUTO_SHRINK_GAP_RATIO_MAJOR = 0.88;
 	const AUTO_SHRINK_GAP_RATIO_MINOR = 0.82;
 	const MIN_AUTO_SHRINK_SCALE = 0.68;
+	const AUTO_SHRINK_EASE = 0.72;
+	const PREVIEW_BASE_IMAGE_HEIGHT_PX = 28;
 	const MAX_STORED_ARTIFACT_GROUPS = 80;
 	const MAX_HEADER_PARSE_CACHE = 24;
 	const MAX_HEADER_GEOMETRY_CACHE = 24;
@@ -801,6 +802,25 @@
 		return Number(settings.rotationMode) || 0;
 	}
 
+	function getTextRenderSettings(settings) {
+		const fontSizeMil = Math.max(Number(settings && settings.fontSizeMil) || 1, 1);
+		const strokeWidthMil = clamp(Number(settings && settings.strokeWidthMil) || 0, 0, fontSizeMil * 0.38);
+		const marginXMil = clamp(fontSizeMil * 0.05 + strokeWidthMil * 0.45, 1.6, 5.5);
+		const marginYMil = clamp(fontSizeMil * 0.075 + strokeWidthMil * 0.55, 2, 7);
+		return {
+			fontSizeMil,
+			strokeWidthMil,
+			marginXMil,
+			marginYMil,
+		};
+	}
+
+	function getPreviewImageHeightPx(settings) {
+		const { fontSizeMil } = getTextRenderSettings(settings);
+		const scale = clamp(fontSizeMil / DEFAULT_SETTINGS.fontSizeMil, 0.45, 2.4);
+		return clamp(PREVIEW_BASE_IMAGE_HEIGHT_PX * scale, 14, 72);
+	}
+
 	function drawPreviewLabel(context, text, centerX, centerY, rotation, settings, previewImageHeightPx, metrics) {
 		const pixelScale = previewImageHeightPx / Math.max(metrics.canvasHeightPx, 1);
 		const fontPx = Math.max(TEXT_RENDER_FONT_PX * pixelScale, 9);
@@ -812,7 +832,7 @@
 		context.rotate((rotation * Math.PI) / 180);
 		context.textAlign = 'center';
 		context.textBaseline = 'middle';
-		context.font = `600 ${fontPx}px "${settings.fontFamily}", sans-serif`;
+		context.font = `${TEXT_RENDER_FONT_WEIGHT} ${fontPx}px "${settings.fontFamily}", sans-serif`;
 		context.lineJoin = 'round';
 		context.lineCap = 'round';
 		context.lineWidth = strokePx;
@@ -865,7 +885,7 @@
 			: 'horizontal';
 		const previewRotation = getPreviewRotation(currentSettings, orientation);
 		const textMetrics = getTextSourceMetrics(currentSettings);
-		const previewImageHeightPx = clamp(currentSettings.fontSizeMil * 0.48, 16, 42);
+		const previewImageHeightPx = getPreviewImageHeightPx(currentSettings);
 		const previewStrokePx = textMetrics.strokeWidthPx <= 0
 			? 0
 			: Math.max((previewImageHeightPx / Math.max(textMetrics.canvasHeightPx, 1)) * textMetrics.strokeWidthPx, 0.5);
@@ -1129,17 +1149,12 @@
 	}
 
 	function getTextSourceMetrics(settings) {
-		const fontSizeMil = Math.max(Number(settings.fontSizeMil) || 1, 1);
-		const requestedStrokeMil = clamp(Number(settings.strokeWidthMil) || 0, 0, fontSizeMil * 0.45);
-		const baseHeightPx = Math.ceil(TEXT_RENDER_FONT_PX * 1.2) + TEXT_RENDER_PADDING_Y_PX * 2;
-		let strokeWidthPx = 0;
-		if (requestedStrokeMil > 0) {
-			const denominator = Math.max(1 - (2 * requestedStrokeMil) / fontSizeMil, 0.05);
-			strokeWidthPx = (requestedStrokeMil * baseHeightPx / fontSizeMil) / denominator;
-		}
-
+		const textSettings = getTextRenderSettings(settings);
+		const baseHeightPx = Math.ceil(TEXT_RENDER_FONT_PX * 1.04) + TEXT_RENDER_PADDING_Y_PX * 2;
+		const pxPerMil = baseHeightPx / textSettings.fontSizeMil;
+		const strokeWidthPx = textSettings.strokeWidthMil * pxPerMil;
 		const canvasHeightPx = baseHeightPx + strokeWidthPx * 2;
-		const imageScale = fontSizeMil / canvasHeightPx;
+		const imageScale = textSettings.fontSizeMil / canvasHeightPx;
 		return {
 			strokeWidthPx,
 			canvasHeightPx,
@@ -1156,9 +1171,8 @@
 			throw new Error('生成失败，请重试。');
 		}
 
-		const fontSizeMil = Math.max(Number(settings.fontSizeMil) || 1, 1);
-		const strokeWidthMil = Math.max(Number(settings.strokeWidthMil) || 0, 0);
-		const fontDeclaration = `500 ${TEXT_RENDER_FONT_PX}px "${settings.fontFamily}", sans-serif`;
+		const textSettings = getTextRenderSettings(settings);
+		const fontDeclaration = `${TEXT_RENDER_FONT_WEIGHT} ${TEXT_RENDER_FONT_PX}px "${settings.fontFamily}", sans-serif`;
 		measureContext.font = fontDeclaration;
 		measureContext.textBaseline = 'alphabetic';
 
@@ -1169,10 +1183,10 @@
 		const rightPx = Math.max(measured.actualBoundingBoxRight || measured.width || TEXT_RENDER_FONT_PX * 0.6, 1);
 		const fillWidthPx = Math.max(leftPx + rightPx, 1);
 		const fillHeightPx = Math.max(ascentPx + descentPx, 1);
-		const pxPerMil = fillHeightPx / fontSizeMil;
-		const strokeWidthPx = strokeWidthMil * pxPerMil;
-		const marginXPx = TEXT_RENDER_MARGIN_X_MIL * pxPerMil;
-		const marginYPx = TEXT_RENDER_MARGIN_Y_MIL * pxPerMil;
+		const pxPerMil = fillHeightPx / textSettings.fontSizeMil;
+		const strokeWidthPx = textSettings.strokeWidthMil * pxPerMil;
+		const marginXPx = textSettings.marginXMil * pxPerMil;
+		const marginYPx = textSettings.marginYMil * pxPerMil;
 		const paddingXPx = marginXPx + strokeWidthPx + 1;
 		const paddingYPx = marginYPx + strokeWidthPx + 1;
 		const canvasWidthPx = Math.ceil(fillWidthPx + paddingXPx * 2);
@@ -1690,7 +1704,7 @@
 		}
 
 		const bounds = getRangeBounds(startPoint, endPoint);
-		const lineWidth = clamp(Math.max(Number(settings.strokeWidthMil) || 0, 4), 4, 40);
+		const lineWidth = clamp(Math.max(Number(settings.strokeWidthMil) || 0, 1), 1, 40);
 		const corners = [
 			{ x: bounds.minX, y: bounds.minY },
 			{ x: bounds.maxX, y: bounds.minY },
@@ -1752,8 +1766,12 @@
 			: Number.POSITIVE_INFINITY;
 		const scaleByMajor = footprint.major > 0 ? availableMajor / footprint.major : 1;
 		const scaleByMinor = footprint.minor > 0 ? availableMinor / footprint.minor : 1;
-		const autoScale = Math.min(scaleByMajor, scaleByMinor, 1);
-		return clamp(autoScale, MIN_AUTO_SHRINK_SCALE, 1);
+		const fitScale = Math.min(scaleByMajor, scaleByMinor, 1);
+		if (fitScale >= 1) {
+			return 1;
+		}
+		const easedScale = 1 - (1 - fitScale) * AUTO_SHRINK_EASE;
+		return clamp(easedScale, MIN_AUTO_SHRINK_SCALE, 1);
 	}
 
 	function layoutArtifactsFromRange(artifacts, startPoint, endPoint, settings) {
@@ -1901,7 +1919,7 @@
 			return [];
 		}
 
-		const lineWidth = clamp(Math.max(Number(settings.strokeWidthMil) || 0, 4), 4, 40);
+		const lineWidth = clamp(Math.max(Number(settings.strokeWidthMil) || 0, 1), 1, 40);
 		const bounds = header.shellBounds;
 		const corners = [
 			projectPoint(header.axis, bounds.majorMin, bounds.minorMin),
