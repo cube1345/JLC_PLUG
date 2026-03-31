@@ -127,6 +127,19 @@
 						<textarea id="label-map" rows="3" placeholder="GND=G&#10;PA*=A$1&#10;/^PB(\d+)$/=B$1"></textarea>
 					</label>
 				</section>
+
+				<section class="card label-preview-card compact-card">
+					<div class="card-head card-head-inline">
+						<div>
+							<h2>最终标签</h2>
+							<p id="label-preview-meta">选择排针后可查看最终标签。</p>
+						</div>
+						<button id="refresh-label-preview" class="mini-action" type="button">刷新</button>
+					</div>
+					<div id="label-preview-list" class="label-preview-list">
+						<span class="label-chip is-muted">等待读取</span>
+					</div>
+				</section>
 			</section>
 
 			<section id="tab-panel-guide" class="tab-panel config-only" data-tab-panel="guide" hidden>

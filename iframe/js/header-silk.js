@@ -57,11 +57,16 @@
 		generate: document.getElementById('generate'),
 		previewCanvas: document.getElementById('preview-canvas'),
 		previewSummary: document.getElementById('preview-summary'),
+		refreshLabelPreview: document.getElementById('refresh-label-preview'),
+		labelPreviewMeta: document.getElementById('label-preview-meta'),
+		labelPreviewList: document.getElementById('label-preview-list'),
 	};
 
 	let currentSettings = loadSettings();
 	const headerParseCache = new Map();
 	const headerGeometryCache = new Map();
+	let labelPreviewRefreshTimer = undefined;
+	let labelPreviewRequestId = 0;
 
 	function asArray(value) {
 		if (Array.isArray(value)) {
@@ -438,8 +443,31 @@
 		return normalizeText(component.getState_PrimitiveId && component.getState_PrimitiveId()) || 'HEADER';
 	}
 
-	function getHeaderPadPreview(header, maxItems) {
-		return header.pads.slice(0, maxItems || 6).map((pad) => `${pad.padNumber}:${pad.netName || pad.silkLabel}`).join('，');
+	function getHeaderDisplayLabelItems(header, settings) {
+		const labelMappings = parseLabelMappings(settings && settings.labelMapText);
+		return header.rows.flatMap((row) =>
+			[...row.pads]
+				.sort((leftPad, rightPad) => {
+					const padNumberOrder = comparePadNumbers(leftPad.padNumber, rightPad.padNumber);
+					if (padNumberOrder !== 0) {
+						return padNumberOrder;
+					}
+					return leftPad.majorProjection - rightPad.majorProjection;
+				})
+				.map((pad) => ({
+					rowIndex: row.index,
+					padNumber: pad.padNumber,
+					netName: pad.netName,
+					displayLabel: applyLabelMappingWithMap(makeSilkLabel(pad.netName, pad.padNumber), labelMappings),
+				})),
+		);
+	}
+
+	function getHeaderPadPreview(header, settings, maxItems) {
+		return getHeaderDisplayLabelItems(header, settings)
+			.slice(0, maxItems || 6)
+			.map((item) => `${item.padNumber}:${item.displayLabel}`)
+			.join('，');
 	}
 
 	function getPlacementMeta(header) {
@@ -940,6 +968,86 @@
 				? '底层'
 				: '自动';
 		summary.textContent = `字号 ${fontSizeDisplay} ${currentSettings.unitMode}，粗细 ${strokeDisplay} ${currentSettings.unitMode}，偏移 ${offsetDisplay} ${currentSettings.unitMode}，${layerText}${shellText}${mappingText}，密集区域自动微缩。`;
+	}
+
+	function renderLabelPreviewState(metaText, chips, options) {
+		const meta = elements.labelPreviewMeta;
+		const list = elements.labelPreviewList;
+		if (!meta || !list) {
+			return;
+		}
+
+		meta.textContent = metaText;
+		list.innerHTML = '';
+
+		for (const chip of chips) {
+			const chipElement = document.createElement('span');
+			chipElement.className = chip.muted ? 'label-chip is-muted' : 'label-chip';
+			if (chip.padNumber) {
+				const padElement = document.createElement('strong');
+				padElement.textContent = chip.padNumber;
+				chipElement.appendChild(padElement);
+				chipElement.appendChild(document.createTextNode(`:${chip.text}`));
+			}
+			else {
+				chipElement.textContent = chip.text;
+			}
+			list.appendChild(chipElement);
+		}
+
+		if (!chips.length && options && options.emptyText) {
+			const chipElement = document.createElement('span');
+			chipElement.className = 'label-chip is-muted';
+			chipElement.textContent = options.emptyText;
+			list.appendChild(chipElement);
+		}
+	}
+
+	async function refreshLabelPreview() {
+		const requestId = ++labelPreviewRequestId;
+		renderLabelPreviewState('正在读取当前排针...', [], { emptyText: '读取中' });
+
+		try {
+			const header = await resolveSelectedHeader();
+			if (requestId !== labelPreviewRequestId) {
+				return;
+			}
+
+			const labelItems = getHeaderDisplayLabelItems(header, currentSettings);
+			const visibleItems = labelItems.slice(0, 24).map((item) => ({
+				padNumber: item.padNumber,
+				text: item.displayLabel || item.netName || `P${item.padNumber || '?'}`,
+			}));
+			if (labelItems.length > visibleItems.length) {
+				visibleItems.push({
+					text: `+${labelItems.length - visibleItems.length}`,
+					muted: true,
+				});
+			}
+
+			renderLabelPreviewState(
+				`${header.designator} · ${header.padCount} Pin · ${header.rows.length} 行 · ${getHeaderPadPreview(header, currentSettings, 6)}`,
+				visibleItems,
+				{ emptyText: '没有可显示的标签' },
+			);
+		}
+		catch (error) {
+			if (requestId !== labelPreviewRequestId) {
+				return;
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			renderLabelPreviewState(message, [], { emptyText: '等待选择' });
+		}
+	}
+
+	function scheduleLabelPreviewRefresh(delayMs) {
+		if (labelPreviewRefreshTimer) {
+			clearTimeout(labelPreviewRefreshTimer);
+		}
+		labelPreviewRefreshTimer = setTimeout(() => {
+			labelPreviewRefreshTimer = undefined;
+			void refreshLabelPreview();
+		}, delayMs == null ? 180 : delayMs);
 	}
 
 	async function populateFontOptions(settings) {
@@ -2361,7 +2469,11 @@
 	function bindSettings() {
 		elements.tabs.forEach((tabButton) => {
 			tabButton.addEventListener('click', () => {
-				activateTab(tabButton.dataset.tabTarget || 'compact');
+				const tabName = tabButton.dataset.tabTarget || 'compact';
+				activateTab(tabName);
+				if (tabName === 'layout') {
+					scheduleLabelPreviewRefresh(0);
+				}
 			});
 		});
 
@@ -2418,6 +2530,7 @@
 			currentSettings.labelMapText = elements.labelMap.value || '';
 			saveSettings(currentSettings);
 			renderPreview();
+			scheduleLabelPreviewRefresh(120);
 		});
 
 		elements.includeShell.addEventListener('change', () => {
@@ -2436,6 +2549,12 @@
 			currentSettings = { ...DEFAULT_SETTINGS };
 			saveSettings(currentSettings);
 			applySettings(currentSettings);
+			scheduleLabelPreviewRefresh(0);
+		});
+
+		elements.refreshLabelPreview.addEventListener('click', () => {
+			syncSettingsFromForm();
+			void refreshLabelPreview();
 		});
 
 		elements.deleteGenerated.addEventListener('click', () => {
@@ -2452,5 +2571,6 @@
 		activateTab('compact');
 		applySettings(currentSettings);
 		bindSettings();
+		scheduleLabelPreviewRefresh(0);
 	});
 })();

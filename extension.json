@@ -3,7 +3,7 @@
 	"uuid": "2eec78240b2449dd93414d08dbb3fa4e",
 	"displayName": "丝印一键生成",
 	"description": "根据排针排母网络一键生成/管理丝印",
-	"version": "2.1.7",
+	"version": "2.1.8",
 	"publisher": "marcus",
 	"engines": {
 		"eda": "^3.0.0"
