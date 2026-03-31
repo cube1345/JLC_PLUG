@@ -23,7 +23,7 @@ export function about(): void {
 }
 
 export function generateSelectedHeaderSilk(): void {
-	void eda.sys_IFrame.openIFrame('/iframe/header-silk.html', 352, 500, 'header-silk-panel', {
+	void eda.sys_IFrame.openIFrame('/iframe/header-silk.html', 330, 452, 'header-silk-panel', {
 		title: '丝印一键生成',
 		maximizeButton: false,
 		minimizeButton: false,
